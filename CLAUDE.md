@@ -32,3 +32,5 @@ Key files:
 ## Workflow
 
 After completing each prompt/task, commit and push all changes to git.
+
+Do not add co-author lines to commits.
