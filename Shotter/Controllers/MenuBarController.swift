@@ -50,7 +50,7 @@ final class MenuBarController: ObservableObject {
             keyEquivalent: "3"
         )
         fullScreenItem.target = self
-        fullScreenItem.keyEquivalentModifierMask = [.command, .shift]
+        fullScreenItem.keyEquivalentModifierMask = [.option, .shift]
         menu.addItem(fullScreenItem)
 
         let regionItem = NSMenuItem(
@@ -59,7 +59,7 @@ final class MenuBarController: ObservableObject {
             keyEquivalent: "4"
         )
         regionItem.target = self
-        regionItem.keyEquivalentModifierMask = [.command, .shift]
+        regionItem.keyEquivalentModifierMask = [.option, .shift]
         menu.addItem(regionItem)
 
         let windowItem = NSMenuItem(
@@ -68,7 +68,7 @@ final class MenuBarController: ObservableObject {
             keyEquivalent: "5"
         )
         windowItem.target = self
-        windowItem.keyEquivalentModifierMask = [.command, .shift]
+        windowItem.keyEquivalentModifierMask = [.option, .shift]
         menu.addItem(windowItem)
 
         menu.addItem(NSMenuItem.separator())

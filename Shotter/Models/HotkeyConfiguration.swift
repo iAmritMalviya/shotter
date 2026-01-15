@@ -5,20 +5,20 @@ struct HotkeyConfiguration: Codable, Equatable {
     let keyCode: UInt32
     let modifiers: UInt32
 
-    // Default hotkeys
+    // Default hotkeys (Option+Shift to avoid conflict with macOS defaults)
     static let fullScreen = HotkeyConfiguration(
         keyCode: UInt32(kVK_ANSI_3),
-        modifiers: UInt32(cmdKey | shiftKey)
+        modifiers: UInt32(optionKey | shiftKey)
     )
 
     static let region = HotkeyConfiguration(
         keyCode: UInt32(kVK_ANSI_4),
-        modifiers: UInt32(cmdKey | shiftKey)
+        modifiers: UInt32(optionKey | shiftKey)
     )
 
     static let window = HotkeyConfiguration(
         keyCode: UInt32(kVK_ANSI_5),
-        modifiers: UInt32(cmdKey | shiftKey)
+        modifiers: UInt32(optionKey | shiftKey)
     )
 
     var displayString: String {
