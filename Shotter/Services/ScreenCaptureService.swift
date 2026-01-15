@@ -15,9 +15,9 @@ final class ScreenCaptureService: ObservableObject {
 
     /// Captures the full screen (primary display) and copies to clipboard
     func captureFullScreen() async throws -> NSImage {
-        guard permissionManager.isAuthorized else {
+        if !permissionManager.isAuthorized {
             await permissionManager.requestPermission()
-            if !permissionManager.isAuthorized {
+            guard permissionManager.isAuthorized else {
                 throw CaptureError.permissionDenied
             }
         }
@@ -27,9 +27,9 @@ final class ScreenCaptureService: ObservableObject {
 
     /// Captures a specific region and copies to clipboard
     func captureRegion(_ rect: CGRect) async throws -> NSImage {
-        guard permissionManager.isAuthorized else {
+        if !permissionManager.isAuthorized {
             await permissionManager.requestPermission()
-            if !permissionManager.isAuthorized {
+            guard permissionManager.isAuthorized else {
                 throw CaptureError.permissionDenied
             }
         }
@@ -43,9 +43,9 @@ final class ScreenCaptureService: ObservableObject {
 
     /// Captures a specific window and copies to clipboard
     func captureWindow(_ windowID: CGWindowID) async throws -> NSImage {
-        guard permissionManager.isAuthorized else {
+        if !permissionManager.isAuthorized {
             await permissionManager.requestPermission()
-            if !permissionManager.isAuthorized {
+            guard permissionManager.isAuthorized else {
                 throw CaptureError.permissionDenied
             }
         }
