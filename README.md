@@ -4,16 +4,17 @@ A lightweight macOS menu bar utility that captures screenshots and copies them d
 
 ## Features
 
-- **Capture Full Screen** - `Cmd+Shift+3`
-- **Capture Region** - `Cmd+Shift+4` (drag to select)
-- **Capture Window** - `Cmd+Shift+5` (choose from list)
+- **Capture Full Screen** - `Option+Shift+3`
+- **Capture Region** - `Option+Shift+4` (drag to select)
+- **Capture Window** - `Option+Shift+5` (choose from list)
 - **Menu Bar App** - Lives in your menu bar, no Dock icon
 - **Global Hotkeys** - Works from any application
+- **Launch at Login** - Always ready when you need it
 - **Zero Disk Usage** - Images go straight to clipboard
 
 ## Requirements
 
-- macOS 12.3 (Monterey) or later
+- macOS 14.0 (Sonoma) or later
 - Xcode 15+ for building
 - Screen Recording permission
 
@@ -54,7 +55,7 @@ open Shotter.xcodeproj
 2. Click the icon → "Grant Screen Recording Permission"
 3. Enable Shotter in System Settings
 4. Restart Shotter if needed
-5. Use `Cmd+Shift+3` to capture!
+5. Use `Option+Shift+3` to capture!
 
 ## Project Structure
 
@@ -102,10 +103,12 @@ In Xcode → Signing & Capabilities:
 
 ### Hotkeys not working
 
-Default hotkeys (`Cmd+Shift+3/4/5`) may conflict with system screenshots.
-Either:
-- Disable system screenshots in System Settings → Keyboard → Shortcuts
-- Or Shotter will still work, but system screenshot will also trigger
+Shotter uses `Option+Shift+3/4/5` which don't conflict with macOS defaults.
+
+macOS shortcuts still work normally:
+- `Cmd+Shift+3` - Screenshot to Desktop
+- `Cmd+Shift+4` - Region to Desktop
+- `Cmd+Shift+5` - Screenshot panel
 
 ### App not appearing in menu bar
 
