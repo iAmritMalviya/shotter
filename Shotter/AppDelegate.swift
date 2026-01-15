@@ -1,5 +1,6 @@
 import AppKit
 import UserNotifications
+import ServiceManagement
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -17,9 +18,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Register global hotkeys
         registerHotkeys()
 
+        // Setup launch at login if enabled
+        setupLaunchAtLogin()
+
         // Check permissions on launch
         Task {
             await PermissionManager.shared.checkPermission()
+        }
+    }
+
+    private func setupLaunchAtLogin() {
+        let launchAtLogin = UserDefaults.standard.bool(forKey: "launchAtLogin")
+        if launchAtLogin {
+            try? SMAppService.mainApp.register()
         }
     }
 
