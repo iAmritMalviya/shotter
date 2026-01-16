@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import Combine
 import UserNotifications
+import AudioToolbox
 
 @MainActor
 final class MenuBarController: ObservableObject {
@@ -14,11 +15,20 @@ final class MenuBarController: ObservableObject {
 
     private var regionSelectionWindow: RegionSelectionWindow?
     private var cancellables = Set<AnyCancellable>()
+    private var captureSoundID: SystemSoundID = 0
 
     init() {
+        setupCaptureSound()
         setupStatusItem()
         setupMenu()
         observePermissions()
+    }
+
+    private func setupCaptureSound() {
+        let soundPath = "/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/system/Screen Capture.aif" as CFString
+        if let soundURL = CFURLCreateWithFileSystemPath(nil, soundPath, .cfurlposixPathStyle, false) {
+            AudioServicesCreateSystemSoundID(soundURL, &captureSoundID)
+        }
     }
 
     // MARK: - Setup
@@ -226,15 +236,12 @@ final class MenuBarController: ObservableObject {
 
     private func showSuccessFeedback() {
         // Play screenshot capture sound
-        if UserDefaults.standard.bool(forKey: "playSoundOnCapture") != false {
-            let soundPath = "/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/system/Screen Capture.aif"
-            if let sound = NSSound(contentsOfFile: soundPath, byReference: true) {
-                sound.play()
-            }
+        if UserDefaults.standard.bool(forKey: "playSoundOnCapture"), captureSoundID != 0 {
+            AudioServicesPlaySystemSound(captureSoundID)
         }
 
         // Show notification
-        if UserDefaults.standard.bool(forKey: "showNotification") != false {
+        if UserDefaults.standard.bool(forKey: "showNotification") {
             let content = UNMutableNotificationContent()
             content.title = "Screenshot Captured"
             content.body = "Image copied to clipboard"

@@ -8,6 +8,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var hotkeyManager: HotkeyManager!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Register default settings
+        UserDefaults.standard.register(defaults: [
+            "playSoundOnCapture": true,
+            "showNotification": true
+        ])
+
         // Request notification permission
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
 

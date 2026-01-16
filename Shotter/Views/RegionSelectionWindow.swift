@@ -3,6 +3,7 @@ import AppKit
 final class RegionSelectionWindow: NSWindow {
     private var selectionView: RegionSelectionView!
     private var completionHandler: ((CGRect?) -> Void)?
+    private var keyMonitor: Any?
 
     init() {
         // Get the frame covering all screens
@@ -39,27 +40,42 @@ final class RegionSelectionWindow: NSWindow {
     func beginSelection(completion: @escaping (CGRect?) -> Void) {
         self.completionHandler = completion
 
+        // Add local monitor for Escape key
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == 53 { // Escape key
+                self?.cancelSelection()
+                return nil
+            }
+            return event
+        }
+
         // Show window and capture mouse
         self.makeKeyAndOrderFront(nil)
+        self.makeFirstResponder(selectionView)
         NSCursor.crosshair.push()
 
         // Make app active to receive events
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 { // Escape key
-            cancelSelection()
+    override var canBecomeKey: Bool { true }
+
+    private func removeKeyMonitor() {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
         }
     }
 
     private func cancelSelection() {
+        removeKeyMonitor()
         NSCursor.pop()
         self.orderOut(nil)
         completionHandler?(nil)
     }
 
     private func completeSelection(rect: CGRect) {
+        removeKeyMonitor()
         NSCursor.pop()
         self.orderOut(nil)
         completionHandler?(rect)
@@ -77,6 +93,12 @@ final class RegionSelectionView: NSView {
     private var isDragging = false
 
     override var acceptsFirstResponder: Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 { // Escape key
+            onSelectionCancelled?()
+        }
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         // Semi-transparent overlay
