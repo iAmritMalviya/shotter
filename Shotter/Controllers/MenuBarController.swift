@@ -225,9 +225,12 @@ final class MenuBarController: ObservableObject {
     // MARK: - Feedback
 
     private func showSuccessFeedback() {
-        // Play sound
+        // Play screenshot capture sound
         if UserDefaults.standard.bool(forKey: "playSoundOnCapture") != false {
-            NSSound(named: "Pop")?.play()
+            let soundPath = "/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/system/Screen Capture.aif"
+            if let sound = NSSound(contentsOfFile: soundPath, byReference: true) {
+                sound.play()
+            }
         }
 
         // Show notification
