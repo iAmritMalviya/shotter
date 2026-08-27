@@ -9,7 +9,35 @@ final class ScreenCaptureService: ObservableObject {
     private let permissionManager = PermissionManager.shared
     private let clipboardManager = ClipboardManager.shared
 
+    /// In-flight `SCShareableContent` fetch started when the region overlay opens.
+    private var pendingContent: Task<SCShareableContent, Error>?
+
     private init() {}
+
+    // MARK: - Shareable Content
+
+    /// Starts fetching shareable content ahead of an imminent capture.
+    ///
+    /// `SCShareableContent.excludingDesktopWindows` costs ~40ms, which otherwise lands entirely
+    /// after mouse-up. Kicking it off when the selection overlay appears overlaps that cost with
+    /// the user's drag, so the capture feels immediate. The result is consumed exactly once, and
+    /// is fetched at overlay-open time so the display list cannot go stale in between.
+    func prewarmShareableContent() {
+        pendingContent?.cancel()
+        pendingContent = Task {
+            try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        }
+    }
+
+    private func shareableContent() async throws -> SCShareableContent {
+        if let pending = pendingContent {
+            pendingContent = nil
+            if let content = try? await pending.value {
+                return content
+            }
+        }
+        return try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+    }
 
     // MARK: - Public Capture Methods
 
@@ -71,10 +99,7 @@ final class ScreenCaptureService: ObservableObject {
         // Capture mouse position before any async work to avoid race conditions
         let mouseCG = mouseLocationCG
 
-        let content = try await SCShareableContent.excludingDesktopWindows(
-            false,
-            onScreenWindowsOnly: true
-        )
+        let content = try await shareableContent()
 
         guard !content.displays.isEmpty else {
             throw CaptureError.noDisplaysFound
@@ -97,10 +122,7 @@ final class ScreenCaptureService: ObservableObject {
     }
 
     private func captureRegionModern(_ rect: CGRect) async throws -> NSImage {
-        let content = try await SCShareableContent.excludingDesktopWindows(
-            false,
-            onScreenWindowsOnly: true
-        )
+        let content = try await shareableContent()
 
         guard !content.displays.isEmpty else {
             throw CaptureError.noDisplaysFound

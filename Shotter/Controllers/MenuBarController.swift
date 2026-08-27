@@ -13,7 +13,9 @@ final class MenuBarController: ObservableObject {
     private let clipboardManager = ClipboardManager.shared
     private let permissionManager = PermissionManager.shared
 
-    private var regionSelectionWindow: RegionSelectionWindow?
+    // Built once and reused: allocating a panel spanning every screen on each capture is
+    // wasted work on the critical path between the hotkey and the crosshair appearing.
+    private lazy var regionSelectionWindow = RegionSelectionWindow()
     private var cancellables = Set<AnyCancellable>()
     private var captureSoundID: SystemSoundID = 0
 
@@ -156,8 +158,10 @@ final class MenuBarController: ObservableObject {
     }
 
     @objc func captureRegion() {
-        regionSelectionWindow = RegionSelectionWindow()
-        regionSelectionWindow?.beginSelection { [weak self] rect in
+        // Overlap the ~40ms shareable-content fetch with the user's drag.
+        captureService.prewarmShareableContent()
+
+        regionSelectionWindow.beginSelection { [weak self] rect in
             guard let self = self, let rect = rect else { return }
 
             Task {

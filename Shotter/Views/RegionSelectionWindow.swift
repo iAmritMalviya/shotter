@@ -1,19 +1,27 @@
 import AppKit
 
-final class RegionSelectionWindow: NSWindow {
+/// Full-screen overlay used to drag out a capture region.
+///
+/// This is an `NSPanel` with `.nonactivatingPanel`, not a plain `NSWindow`, so it can take
+/// keyboard focus *without* activating Shotter. Activating an LSUIElement app to show the
+/// overlay causes a visible app-switch (and sometimes a Space-switch) transition before the
+/// crosshair appears, which is exactly the lag the system screenshot UI does not have.
+final class RegionSelectionWindow: NSPanel {
     private var selectionView: RegionSelectionView!
     private var completionHandler: ((CGRect?) -> Void)?
     private var keyMonitor: Any?
 
+    /// The rect spanning every attached screen, in AppKit global coordinates.
+    private static var unionFrame: CGRect {
+        NSScreen.screens.reduce(CGRect.null) { $0.union($1.frame) }
+    }
+
     init() {
-        // Get the frame covering all screens
-        let screenFrame = NSScreen.screens.reduce(CGRect.zero) { result, screen in
-            result.union(screen.frame)
-        }
+        let screenFrame = Self.unionFrame
 
         super.init(
             contentRect: screenFrame,
-            styleMask: .borderless,
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -21,13 +29,14 @@ final class RegionSelectionWindow: NSWindow {
         // Configure window for selection overlay
         self.isOpaque = false
         self.backgroundColor = .clear
+        self.hidesOnDeactivate = false      // NSPanel defaults to true; would yank the overlay away
         self.level = .screenSaver
         self.ignoresMouseEvents = false
         self.acceptsMouseMovedEvents = true
-        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
 
         // Set up selection view
-        selectionView = RegionSelectionView(frame: screenFrame)
+        selectionView = RegionSelectionView(frame: CGRect(origin: .zero, size: screenFrame.size))
         selectionView.onSelectionComplete = { [weak self] rect in
             self?.completeSelection(rect: rect)
         }
@@ -40,6 +49,13 @@ final class RegionSelectionWindow: NSWindow {
     func beginSelection(completion: @escaping (CGRect?) -> Void) {
         self.completionHandler = completion
 
+        // The overlay is reused across captures, so re-fit it to the current screen
+        // arrangement and clear any leftover selection before showing it again.
+        let screenFrame = Self.unionFrame
+        setFrame(screenFrame, display: false)
+        selectionView.frame = CGRect(origin: .zero, size: screenFrame.size)
+        selectionView.reset()
+
         // Add local monitor for Escape key
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.keyCode == 53 { // Escape key
@@ -49,13 +65,11 @@ final class RegionSelectionWindow: NSWindow {
             return event
         }
 
-        // Show window and capture mouse
+        // Show window and capture mouse. Deliberately no NSApp.activate() — a nonactivating
+        // panel receives keyboard input without making Shotter the active app.
         self.makeKeyAndOrderFront(nil)
         self.makeFirstResponder(selectionView)
         NSCursor.crosshair.push()
-
-        // Make app active to receive events
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     override var canBecomeKey: Bool { true }
@@ -67,18 +81,21 @@ final class RegionSelectionWindow: NSWindow {
         }
     }
 
-    private func cancelSelection() {
+    private func finish(with rect: CGRect?) {
+        guard let handler = completionHandler else { return }
+        completionHandler = nil          // guard against the view reporting twice
         removeKeyMonitor()
         NSCursor.pop()
         self.orderOut(nil)
-        completionHandler?(nil)
+        handler(rect)
+    }
+
+    private func cancelSelection() {
+        finish(with: nil)
     }
 
     private func completeSelection(rect: CGRect) {
-        removeKeyMonitor()
-        NSCursor.pop()
-        self.orderOut(nil)
-        completionHandler?(rect)
+        finish(with: rect)
     }
 }
 
@@ -94,6 +111,13 @@ final class RegionSelectionView: NSView {
 
     override var acceptsFirstResponder: Bool { true }
 
+    func reset() {
+        startPoint = nil
+        currentRect = nil
+        isDragging = false
+        needsDisplay = true
+    }
+
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 { // Escape key
             onSelectionCancelled?()
@@ -101,16 +125,22 @@ final class RegionSelectionView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        // Semi-transparent overlay
+        let context = NSGraphicsContext.current
+
+        // .copy rather than the default .sourceOver: only the dirty region is repainted while
+        // dragging, and blending 30% black over an area that already has 30% black would
+        // darken it a little more on every mouse-moved event.
+        context?.compositingOperation = .copy
         NSColor.black.withAlphaComponent(0.3).setFill()
         dirtyRect.fill()
+        context?.compositingOperation = .sourceOver
 
         // Draw selection rectangle
         if let rect = currentRect {
             // Clear the selection area
-            NSGraphicsContext.current?.compositingOperation = .clear
+            context?.compositingOperation = .clear
             rect.fill()
-            NSGraphicsContext.current?.compositingOperation = .sourceOver
+            context?.compositingOperation = .sourceOver
 
             // Draw border
             NSColor.white.setStroke()
@@ -122,6 +152,24 @@ final class RegionSelectionView: NSView {
             // Draw dimensions label
             drawDimensionsLabel(for: rect)
         }
+    }
+
+    /// Repaints only the area the selection actually touched.
+    ///
+    /// The previous code set `needsDisplay = true` on every mouse-moved event, forcing a repaint
+    /// of the entire multi-screen overlay (here 4000x1440 points) for each drag sample, which is
+    /// what made dragging feel heavy. The inset covers the dashed border and the dimensions
+    /// label, both of which draw outside the selection rect.
+    private func invalidate(_ first: CGRect?, _ second: CGRect?) {
+        var dirty = CGRect.null
+        if let first { dirty = dirty.union(first) }
+        if let second { dirty = dirty.union(second) }
+
+        guard !dirty.isNull else {
+            needsDisplay = true
+            return
+        }
+        setNeedsDisplay(dirty.insetBy(dx: -140, dy: -60))
     }
 
     private func drawDimensionsLabel(for rect: CGRect) {
@@ -157,10 +205,11 @@ final class RegionSelectionView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        let previous = currentRect
         startPoint = convert(event.locationInWindow, from: nil)
         isDragging = true
         currentRect = nil
-        needsDisplay = true
+        invalidate(previous, nil)
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -174,8 +223,9 @@ final class RegionSelectionView: NSView {
         let width = abs(current.x - start.x)
         let height = abs(current.y - start.y)
 
+        let previous = currentRect
         currentRect = CGRect(x: minX, y: minY, width: width, height: height)
-        needsDisplay = true
+        invalidate(previous, currentRect)
     }
 
     override func mouseUp(with event: NSEvent) {
