@@ -49,6 +49,21 @@ open Shotter.xcodeproj
 3. Press `Cmd+R` to build and run
 4. Grant Screen Recording permission when prompted
 
+### Testing capture functionality
+
+Don't test capture with a Debug build. Debug builds are ad-hoc signed, so the binary's
+code-directory hash changes on every rebuild, and macOS revokes the Screen Recording grant
+each time. Install a Release build instead:
+
+```bash
+./install.sh          # builds Release, replaces /Applications/Shotter.app
+open /Applications/Shotter.app
+```
+
+Grant Screen Recording once for the installed copy; it then survives launching, quitting and
+relaunching. Because there is no Apple Developer team configured, a reinstall that includes
+source changes can still ask you to re-grant once.
+
 ## First Run
 
 1. App appears in menu bar (camera icon)
@@ -71,7 +86,8 @@ Shotter/
 │   ├── ScreenCaptureService.swift
 │   ├── ClipboardManager.swift
 │   ├── HotkeyManager.swift
-│   └── PermissionManager.swift
+│   ├── PermissionManager.swift
+│   └── ScreenGeometry.swift
 ├── Views/
 │   ├── PreferencesView.swift
 │   └── RegionSelectionWindow.swift

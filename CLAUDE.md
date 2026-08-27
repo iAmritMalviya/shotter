@@ -55,7 +55,7 @@ Every capture path converges on `MenuBarController`: hotkeys (`AppDelegate.regis
 ### Permission persistence (why Debug builds keep re-prompting)
 macOS TCC keys Screen Recording grants on the binary's **cdhash + bundle ID**. `project.yml` has `CODE_SIGN_STYLE: Automatic` with an empty `DEVELOPMENT_TEAM`, so builds are **ad-hoc signed** — the cdhash changes on every rebuild, TCC sees a different app, and the grant is invalidated. The Debug hardened-runtime exception above removes one input to that hash but does **not** fix the root cause; without a paid Developer ID this is not fixable.
 
-Accepted workaround: **test capture against a Release build installed at `/Applications/Shotter.app`**, where the stable install path plus Release signing keeps the grant. Build Release, then replace `/Applications/Shotter.app` with the product from DerivedData and grant permission once. (`SPEC.md` specifies an `install.sh` to automate this; it has not been written yet.)
+Accepted workaround: **test capture against a Release build installed at `/Applications/Shotter.app`** via `./install.sh`, which builds Release, quits any running copy, replaces the installed app, and prints the resulting signature. Grant Screen Recording once for that copy and it survives launch/quit/relaunch. Release is ad-hoc signed too (`Signature=adhoc`, `TeamIdentifier=not set`) — so a reinstall carrying source changes can still require re-granting once. The win over Debug is not re-granting on every rebuild-and-run cycle, not a permanently stable identity.
 
 ### State, concurrency, and singletons
 - Service singletons (`ScreenCaptureService.shared`, `ClipboardManager.shared`, `PermissionManager.shared`) — all `@MainActor`-isolated where they touch AppKit.

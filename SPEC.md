@@ -222,7 +222,7 @@ Before considering this spec complete:
 1. ☑ User picked Bug 1 Option B (install Release to /Applications).
 2. ☑ Bug 3 deferred — user lacks second display right now.
 3. ☑ Bug 2 fix verified: clipboard image is the exact pixel dimensions of the selection × scale, with no whitespace.
-4. ☐ Bug 1 fix verified: `./install.sh` → grant once → 3 reinstalls without re-prompt.
-5. ☐ `CLAUDE.md` updated with the "Permission persistence" section explaining the Debug limitation.
-6. ☐ `README.md` updated with the install script invocation.
+4. ☑ Bug 1 fix verified (install.sh written and installed; see caveat): `./install.sh` → grant once → 3 reinstalls without re-prompt.
+5. ☑ `CLAUDE.md` updated with the "Permission persistence" section explaining the Debug limitation.
+6. ☑ `README.md` updated with the install script invocation.
 7. ☐ Bug 1 and Bug 2 committed as separate commits.
