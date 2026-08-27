@@ -52,10 +52,36 @@ Every capture path converges on `MenuBarController`: hotkeys (`AppDelegate.regis
 - The app's `Shotter.entitlements` is intentionally empty (`<dict/>`) — **sandboxing is off**, required for screen capture. Don't add the sandbox entitlement.
 - `project.yml` sets `ENABLE_HARDENED_RUNTIME: NO` for Debug, `YES` for Release (commit `470a205`). Don't enable hardened runtime in Debug.
 
-### Permission persistence (why Debug builds keep re-prompting)
-macOS TCC keys Screen Recording grants on the binary's **cdhash + bundle ID**. `project.yml` has `CODE_SIGN_STYLE: Automatic` with an empty `DEVELOPMENT_TEAM`, so builds are **ad-hoc signed** — the cdhash changes on every rebuild, TCC sees a different app, and the grant is invalidated. The Debug hardened-runtime exception above removes one input to that hash but does **not** fix the root cause; without a paid Developer ID this is not fixable.
+### Permission persistence (signing identity)
+macOS TCC keys Screen Recording grants on the app's **designated requirement**. With no Apple
+Developer team, builds default to ad-hoc signing, whose designated requirement is the binary's
+code-directory hash — which changes on every build. That silently revoked the grant on each
+rebuild and made capture fail with `SCStreamErrorDomain -3801` ("The user declined TCCs..."),
+while System Settings still showed the toggle as on.
 
-Accepted workaround: **test capture against a Release build installed at `/Applications/Shotter.app`** via `./install.sh`, which builds Release, quits any running copy, replaces the installed app, and prints the resulting signature. Grant Screen Recording once for that copy and it survives launch/quit/relaunch. Release is ad-hoc signed too (`Signature=adhoc`, `TeamIdentifier=not set`) — so a reinstall carrying source changes can still require re-granting once. The win over Debug is not re-granting on every rebuild-and-run cycle, not a permanently stable identity.
+Builds are therefore signed with a **local self-signed certificate**, created by
+`./setup-signing.sh` and selected via `CODE_SIGN_IDENTITY` in `project.yml`. The designated
+requirement becomes `identifier "com.amrit.Shotter" and certificate leaf = H"..."` — tied to the
+certificate, not the code — so the grant survives rebuilds. Verify with `codesign -d -r-`; if
+that requirement ever mentions a cdhash, signing has silently fallen back to ad-hoc.
+
+Notes on the setup, all of which cost time to discover:
+- The key lives in a **dedicated keychain** (`~/Library/Keychains/shotter-signing.keychain-db`),
+  not the login keychain. `codesign` can only use a key whose keychain *partition list* permits
+  it, and updating that on the login keychain requires the login **keychain** password — which
+  is not necessarily the account password. A dedicated keychain has a password the script sets.
+  Symptom if this is wrong: `errSecInternalComponent` at the CodeSign build step.
+- The certificate is **not trusted**, and does not need to be. `security find-identity -v -p
+  codesigning` will not list it (`CSSMERR_TP_NOT_TRUSTED`), but `codesign` signs with it fine.
+  Setting trust requires an admin authorization dialog; skip it.
+- Generate the PKCS#12 with **`/usr/bin/openssl`** (LibreSSL). Homebrew's OpenSSL 3 writes
+  algorithms the macOS Security framework rejects: `MAC verification failed during PKCS12 import`.
+- If a `codesign` process is ever killed mid-build, delete the leftover `*.cstemp` inside the
+  app bundle in DerivedData. It poisons every later signing attempt with `invalid or unsupported
+  format for signature`.
+
+Test capture against `/Applications/Shotter.app` via `./install.sh` rather than a build run from
+Xcode, so the app has a stable path as well as a stable identity.
 
 ### State, concurrency, and singletons
 - Service singletons (`ScreenCaptureService.shared`, `ClipboardManager.shared`, `PermissionManager.shared`) — all `@MainActor`-isolated where they touch AppKit.

@@ -25,7 +25,13 @@ targets:
         PRODUCT_NAME: Shotter
         INFOPLIST_FILE: Shotter/Info.plist
         CODE_SIGN_ENTITLEMENTS: Shotter/Shotter.entitlements
-        CODE_SIGN_STYLE: Automatic
+        # Signed with a local self-signed certificate (see setup-signing.sh) rather than
+        # ad-hoc. Ad-hoc signing changes the code-directory hash on every build, and macOS TCC
+        # keys the Screen Recording grant on the signing identity — so every rebuild silently
+        # revoked the permission and capture failed with SCStreamErrorDomain -3801. A constant
+        # identity keeps the grant across rebuilds.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Shotter Local Signing"
         DEVELOPMENT_TEAM: ""
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         COMBINE_HIDPI_IMAGES: YES

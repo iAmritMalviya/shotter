@@ -67,8 +67,11 @@ System Settings -> Privacy & Security -> Screen Recording, then relaunch it.
 
 Shortcuts: Option+Shift+3 full screen, Option+Shift+4 region, Option+Shift+5 window.
 
-Caveat: this build is ad-hoc signed (DEVELOPMENT_TEAM is empty in project.yml), so its
-code-directory hash changes whenever the source changes. Reinstalling after a code change
-can still require re-granting Screen Recording once. Launching, quitting and relaunching
-an already-installed build keeps the grant.
+This build is signed with the local "Shotter Local Signing" certificate (see
+setup-signing.sh), so its designated requirement is tied to that certificate rather than to
+the code hash. Screen Recording is granted once and survives future rebuilds.
+
+If capture starts failing with -3801 again, check that signing did not fall back to ad-hoc:
+
+    codesign -d -r- /Applications/Shotter.app   # must name a certificate leaf, not a cdhash
 NOTE

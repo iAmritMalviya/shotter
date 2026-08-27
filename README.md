@@ -56,13 +56,15 @@ code-directory hash changes on every rebuild, and macOS revokes the Screen Recor
 each time. Install a Release build instead:
 
 ```bash
+./setup-signing.sh    # once: creates a local code-signing certificate
 ./install.sh          # builds Release, replaces /Applications/Shotter.app
 open /Applications/Shotter.app
 ```
 
-Grant Screen Recording once for the installed copy; it then survives launching, quitting and
-relaunching. Because there is no Apple Developer team configured, a reinstall that includes
-source changes can still ask you to re-grant once.
+`setup-signing.sh` is a one-time step. Without it, builds are ad-hoc signed and macOS revokes
+the Screen Recording grant on every rebuild, so capture fails with `-3801` even though the
+toggle in System Settings still looks enabled. With it, the app has a stable signing identity
+and you grant Screen Recording exactly once.
 
 ## First Run
 
