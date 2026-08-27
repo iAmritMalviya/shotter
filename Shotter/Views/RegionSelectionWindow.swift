@@ -19,7 +19,7 @@ final class RegionSelectionWindow: NSPanel {
     /// The path is stable but undocumented, so this falls back to `.crosshair` if the resource
     /// ever moves. Reading a system asset at a fixed path is already how the capture sound is
     /// sourced (see `MenuBarController.setupCaptureSound`).
-    private static let captureCursor: NSCursor = {
+    fileprivate static let captureCursor: NSCursor = {
         let directory = "/System/Library/Frameworks/ApplicationServices.framework/Frameworks"
             + "/HIServices.framework/Versions/A/Resources/cursors/screenshotselection"
 
@@ -142,8 +142,39 @@ final class RegionSelectionView: NSView {
     private var startPoint: CGPoint?
     private var currentRect: CGRect?
     private var isDragging = false
+    private var trackingArea: NSTrackingArea?
 
     override var acceptsFirstResponder: Bool { true }
+
+    // The overlay panel is deliberately non-activating, so Shotter never becomes the active
+    // app. NSCursor.push() alone does not survive that — the active app's cursor wins — which
+    // is why the crosshair kept showing instead of the screenshot reticle. An .activeAlways
+    // tracking area still delivers mouse events to an inactive app, so the cursor is re-applied
+    // on entry and on every move. (cursorUpdate: is not delivered for .activeAlways areas, so
+    // mouseEntered/mouseMoved are what actually carry this.)
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+
+        if let trackingArea {
+            removeTrackingArea(trackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: .zero,
+            options: [.activeAlways, .inVisibleRect, .mouseEnteredAndExited, .mouseMoved, .cursorUpdate],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    private func applyCaptureCursor() {
+        RegionSelectionWindow.captureCursor.set()
+    }
+
+    override func cursorUpdate(with event: NSEvent) { applyCaptureCursor() }
+    override func mouseEntered(with event: NSEvent) { applyCaptureCursor() }
+    override func mouseMoved(with event: NSEvent) { applyCaptureCursor() }
 
     func reset() {
         startPoint = nil
@@ -260,6 +291,7 @@ final class RegionSelectionView: NSView {
         let previous = currentRect
         currentRect = CGRect(x: minX, y: minY, width: width, height: height)
         invalidate(previous, currentRect)
+        applyCaptureCursor()
     }
 
     override func mouseUp(with event: NSEvent) {
