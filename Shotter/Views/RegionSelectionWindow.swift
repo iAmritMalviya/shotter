@@ -10,6 +10,32 @@ final class RegionSelectionWindow: NSPanel {
     private var selectionView: RegionSelectionView!
     private var completionHandler: ((CGRect?) -> Void)?
     private var keyMonitor: Any?
+    private var isSessionActive = false
+
+    /// macOS's own screenshot-selection cursor — the dotted reticle Cmd+Shift+4 uses — loaded
+    /// from the HIServices cursor resources so the overlay matches the system screenshot UI
+    /// instead of the thinner, plainer `NSCursor.crosshair`.
+    ///
+    /// The path is stable but undocumented, so this falls back to `.crosshair` if the resource
+    /// ever moves. Reading a system asset at a fixed path is already how the capture sound is
+    /// sourced (see `MenuBarController.setupCaptureSound`).
+    private static let captureCursor: NSCursor = {
+        let directory = "/System/Library/Frameworks/ApplicationServices.framework/Frameworks"
+            + "/HIServices.framework/Versions/A/Resources/cursors/screenshotselection"
+
+        guard let image = NSImage(contentsOfFile: "\(directory)/cursor.pdf"), image.isValid else {
+            return .crosshair
+        }
+
+        // hotx/hoty are in the cursor's own flipped (top-left origin) space, which is the same
+        // space NSCursor expects for its hot spot.
+        let info = NSDictionary(contentsOfFile: "\(directory)/info.plist")
+        let hotSpot = NSPoint(
+            x: (info?["hotx"] as? NSNumber)?.doubleValue ?? image.size.width / 2,
+            y: (info?["hoty"] as? NSNumber)?.doubleValue ?? image.size.height / 2
+        )
+        return NSCursor(image: image, hotSpot: hotSpot)
+    }()
 
     /// The rect spanning every attached screen, in AppKit global coordinates.
     private static var unionFrame: CGRect {
@@ -47,6 +73,13 @@ final class RegionSelectionWindow: NSPanel {
     }
 
     func beginSelection(completion: @escaping (CGRect?) -> Void) {
+        // The global hotkey keeps firing while the overlay is already up. Ignore re-entry:
+        // starting a second session would stack another cursor push and another event monitor
+        // against a single pop and a single removal, leaving the capture cursor stuck
+        // system-wide once the selection finishes.
+        guard !isSessionActive else { return }
+        isSessionActive = true
+
         self.completionHandler = completion
 
         // The overlay is reused across captures, so re-fit it to the current screen
@@ -69,7 +102,7 @@ final class RegionSelectionWindow: NSPanel {
         // panel receives keyboard input without making Shotter the active app.
         self.makeKeyAndOrderFront(nil)
         self.makeFirstResponder(selectionView)
-        NSCursor.crosshair.push()
+        Self.captureCursor.push()
     }
 
     override var canBecomeKey: Bool { true }
@@ -82,7 +115,8 @@ final class RegionSelectionWindow: NSPanel {
     }
 
     private func finish(with rect: CGRect?) {
-        guard let handler = completionHandler else { return }
+        guard isSessionActive, let handler = completionHandler else { return }
+        isSessionActive = false
         completionHandler = nil          // guard against the view reporting twice
         removeKeyMonitor()
         NSCursor.pop()

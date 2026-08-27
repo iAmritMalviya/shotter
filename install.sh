@@ -17,8 +17,20 @@ APP_NAME="Shotter"
 DEST="/Applications/${APP_NAME}.app"
 
 echo "==> Building ${APP_NAME} (Release)"
+BUILD_LOG="$(mktemp -t shotter-build)"
+set +e
 xcodebuild -project "${APP_NAME}.xcodeproj" -scheme "${APP_NAME}" -configuration Release build \
-    | grep -E "^\*\*|error:|warning: .*deprecated" || true
+    > "$BUILD_LOG" 2>&1
+build_status=$?
+set -e
+grep -E "^\*\*|error:|warning: .*deprecated" "$BUILD_LOG" || true
+
+# Without this the build failure is swallowed and the *previous* build still sitting in
+# DerivedData gets installed, which looks exactly like "the fix did not work".
+if [[ $build_status -ne 0 ]]; then
+    echo "error: build failed (full log: ${BUILD_LOG})" >&2
+    exit 1
+fi
 
 echo "==> Locating built product"
 BUILT_DIR="$(xcodebuild -project "${APP_NAME}.xcodeproj" -scheme "${APP_NAME}" -configuration Release \
