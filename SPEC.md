@@ -108,6 +108,12 @@ config.height = Int((clampedRect.height * CGFloat(scale)).rounded())
 
 Also: `backingScaleFactor(for:)` currently returns `Int`, losing precision on non-integer scales. Change return type to `CGFloat` and propagate. (Pure Retina is always 1.0 or 2.0, but external 1x displays exist and the current `?? 2.0` fallback is wrong for them.)
 
+### Resolution (2026-08-27) — fixed, but NOT by the fix proposed above
+
+Scaling `sourceRect` into pixels was implemented and tested against the real displays: it is **not** sufficient. ScreenCaptureKit fits `sourceRect` into the destination buffer with its own aspect-preserving, non-upscaling policy and leaves the remainder transparent, so content still ends up stranded in a corner. Measured directly: `sourceRect=(400,300,1632,1200)` into a 1632×1200 buffer returned content only down to row 941.
+
+Region capture now captures the full display at native resolution and crops the `CGImage`, using `SCContentFilter.contentRect` (points) and `SCContentFilter.pointPixelScale` instead of matching `SCDisplay` back to an `NSScreen` with a `?? 2.0` fallback. Verified byte-for-byte against an independently captured full-display crop on both the 2x built-in and the 1x external monitor, plus a bottom-right edge case.
+
 ### Acceptance criteria
 - 400×300-point selection on a 2x Retina display produces an 800×600-pixel clipboard image where every pixel is real captured content (no whitespace padding).
 - Selection on a 1x external display (if user has one) produces a 1:1 pixel image with no padding.
@@ -215,7 +221,7 @@ Before considering this spec complete:
 
 1. ☑ User picked Bug 1 Option B (install Release to /Applications).
 2. ☑ Bug 3 deferred — user lacks second display right now.
-3. ☐ Bug 2 fix verified: clipboard image is the exact pixel dimensions of the selection × scale, with no whitespace.
+3. ☑ Bug 2 fix verified: clipboard image is the exact pixel dimensions of the selection × scale, with no whitespace.
 4. ☐ Bug 1 fix verified: `./install.sh` → grant once → 3 reinstalls without re-prompt.
 5. ☐ `CLAUDE.md` updated with the "Permission persistence" section explaining the Debug limitation.
 6. ☐ `README.md` updated with the install script invocation.
