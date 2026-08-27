@@ -61,7 +61,8 @@ each time. Install a Release build instead:
 open /Applications/Shotter.app
 ```
 
-`setup-signing.sh` is a one-time step. Without it, builds are ad-hoc signed and macOS revokes
+`setup-signing.sh` is a one-time step (re-running it is a no-op; `--force` issues a new
+certificate and invalidates the existing grant). Without it, builds are ad-hoc signed and macOS revokes
 the Screen Recording grant on every rebuild, so capture fails with `-3801` even though the
 toggle in System Settings still looks enabled. With it, the app has a stable signing identity
 and you grant Screen Recording exactly once.

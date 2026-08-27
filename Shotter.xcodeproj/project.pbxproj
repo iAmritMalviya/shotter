@@ -154,7 +154,6 @@
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
 					6582A6A054B288F137E55A31 = {
-						DevelopmentTeam = "";
 						ProvisioningStyle = Manual;
 					};
 				};
@@ -221,7 +220,6 @@
 				CODE_SIGN_IDENTITY = "Shotter Local Signing";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = Shotter/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -295,10 +293,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Shotter/Shotter.entitlements;
-				CODE_SIGN_IDENTITY = "Shotter Local Signing";
+				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = NO;
 				INFOPLIST_FILE = Shotter/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

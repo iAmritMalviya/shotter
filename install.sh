@@ -16,6 +16,21 @@ cd "$PROJECT_DIR"
 APP_NAME="Shotter"
 DEST="/Applications/${APP_NAME}.app"
 
+SIGNING_KEYCHAIN="$HOME/Library/Keychains/shotter-signing.keychain-db"
+SIGNING_PASS_FILE="$HOME/.config/shotter/signing-keychain-password"
+
+if [[ -f "$SIGNING_KEYCHAIN" && -f "$SIGNING_PASS_FILE" ]]; then
+    # The signing keychain is not the login keychain, so macOS does not unlock it at login.
+    # After a reboot it is locked and the CodeSign build step fails with
+    # errSecInternalComponent, which looks like signing "randomly stopped working".
+    echo "==> Unlocking signing keychain"
+    security unlock-keychain -p "$(cat "$SIGNING_PASS_FILE")" "$SIGNING_KEYCHAIN"
+elif ! security find-identity -p codesigning | grep -q "Shotter Local Signing"; then
+    echo "warning: no 'Shotter Local Signing' identity found." >&2
+    echo "         Run ./setup-signing.sh first, or this build will be ad-hoc signed and" >&2
+    echo "         macOS will revoke Screen Recording on every rebuild." >&2
+fi
+
 echo "==> Building ${APP_NAME} (Release)"
 BUILD_LOG="$(mktemp -t shotter-build)"
 set +e
@@ -31,6 +46,7 @@ if [[ $build_status -ne 0 ]]; then
     echo "error: build failed (full log: ${BUILD_LOG})" >&2
     exit 1
 fi
+rm -f "$BUILD_LOG"
 
 echo "==> Locating built product"
 BUILT_DIR="$(xcodebuild -project "${APP_NAME}.xcodeproj" -scheme "${APP_NAME}" -configuration Release \

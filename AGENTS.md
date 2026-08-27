@@ -59,18 +59,33 @@ code-directory hash — which changes on every build. That silently revoked the 
 rebuild and made capture fail with `SCStreamErrorDomain -3801` ("The user declined TCCs..."),
 while System Settings still showed the toggle as on.
 
-Builds are therefore signed with a **local self-signed certificate**, created by
+**Release** builds are therefore signed with a **local self-signed certificate**, created by
 `./setup-signing.sh` and selected via `CODE_SIGN_IDENTITY` in `project.yml`. The designated
 requirement becomes `identifier "com.amrit.Shotter" and certificate leaf = H"..."` — tied to the
 certificate, not the code — so the grant survives rebuilds. Verify with `codesign -d -r-`; if
 that requirement ever mentions a cdhash, signing has silently fallen back to ad-hoc.
 
+**Debug** builds stay ad-hoc on purpose (`CODE_SIGN_IDENTITY: "-"`), so a fresh clone compiles
+before anyone has run `setup-signing.sh`. Debug builds are not the ones tested against
+`/Applications`, so they do not need a stable identity.
+
 Notes on the setup, all of which cost time to discover:
 - The key lives in a **dedicated keychain** (`~/Library/Keychains/shotter-signing.keychain-db`),
   not the login keychain. `codesign` can only use a key whose keychain *partition list* permits
   it, and updating that on the login keychain requires the login **keychain** password — which
-  is not necessarily the account password. A dedicated keychain has a password the script sets.
-  Symptom if this is wrong: `errSecInternalComponent` at the CodeSign build step.
+  is not necessarily the account password. Symptom if this is wrong: `errSecInternalComponent`
+  at the CodeSign build step.
+- That keychain's password is generated randomly and stored at
+  `~/.config/shotter/signing-keychain-password` (mode 600). Never hardcode it — TCC grants screen
+  capture to anything signed by this certificate, so the key is a privileged credential. For the
+  same reason the key is imported with `-T /usr/bin/codesign` rather than `-A`, so only codesign
+  can use it instead of every process on the machine.
+- macOS does **not** unlock this keychain at login the way it does the login keychain, so
+  `install.sh` unlocks it before building. Without that, the first build after a reboot fails
+  with `errSecInternalComponent` and looks like signing spontaneously broke.
+- `setup-signing.sh` is idempotent and refuses to regenerate unless given `--force`. Forcing it
+  issues a **new** certificate, which changes the designated requirement and throws away the
+  Screen Recording grant — reintroducing the exact bug it exists to prevent.
 - The certificate is **not trusted**, and does not need to be. `security find-identity -v -p
   codesigning` will not list it (`CSSMERR_TP_NOT_TRUSTED`), but `codesign` signs with it fine.
   Setting trust requires an admin authorization dialog; skip it.
