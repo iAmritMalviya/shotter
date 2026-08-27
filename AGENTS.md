@@ -1,8 +1,8 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex when working with code in this repository.
 
-`AGENTS.md` is a near-verbatim copy of this file for Codex. When you change one, mirror the change into the other.
+`CLAUDE.md` is a near-verbatim copy of this file for Claude Code. When you change one, mirror the change into the other.
 
 ## Build Commands
 
