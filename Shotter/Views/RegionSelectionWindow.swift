@@ -191,16 +191,22 @@ final class RegionSelectionView: NSView {
     }
 
     private func convertToScreenCoordinates(_ rect: CGRect) -> CGRect {
-        guard let screen = NSScreen.main else { return rect }
+        guard let window = self.window else { return rect }
 
-        // Flip Y coordinate (AppKit uses bottom-left origin, CGImage uses top-left)
-        let flippedY = screen.frame.height - rect.maxY
+        // Convert corners from view coords → window coords → AppKit screen coords
+        let bottomLeft = window.convertPoint(toScreen: convert(CGPoint(x: rect.minX, y: rect.minY), to: nil))
+        let topRight = window.convertPoint(toScreen: convert(CGPoint(x: rect.maxX, y: rect.maxY), to: nil))
 
-        return CGRect(
-            x: rect.origin.x,
-            y: flippedY,
-            width: rect.width,
-            height: rect.height
+        let screenRect = CGRect(
+            x: bottomLeft.x,
+            y: bottomLeft.y,
+            width: topRight.x - bottomLeft.x,
+            height: topRight.y - bottomLeft.y
         )
+
+        // Flip Y: AppKit (bottom-left origin) → CG (top-left origin), anchored on the primary
+        // display. This used to index NSScreen.screens[0], which is not guaranteed to be the
+        // primary and traps on an empty array.
+        return NSScreen.convertToCGGlobal(screenRect)
     }
 }

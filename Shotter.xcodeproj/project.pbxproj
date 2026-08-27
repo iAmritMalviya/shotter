@@ -10,6 +10,7 @@
 		4D8B2FC843E839615DBA6530 /* ClipboardManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B8BB0887A598FACA380DA0F /* ClipboardManager.swift */; };
 		566EA11CA50BACC531EAE44F /* CaptureMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47271F1FE0705E96523BB8E4 /* CaptureMode.swift */; };
 		5A7F689DBA9F918876590FAF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DA40FEF0B24C4AD9DF59D1A4 /* Assets.xcassets */; };
+		62D6F4E8202340CCFC8F29FA /* ScreenGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AAD67E7888D35A8B76ECEA2 /* ScreenGeometry.swift */; };
 		73475E09946B8187C9FC64FF /* HotkeyConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53770781E0AB4684F469EC25 /* HotkeyConfiguration.swift */; };
 		746CAD14E24DF7D92AAFC5E5 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEC6B9FAC52F63A9E2F31615 /* MenuBarController.swift */; };
 		768E494957596A6D297CF360 /* ShotterApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E241E99787795B3078217A5C /* ShotterApp.swift */; };
@@ -30,6 +31,7 @@
 		50D9D0B3732637DB19F04555 /* Shotter.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Shotter.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		53770781E0AB4684F469EC25 /* HotkeyConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyConfiguration.swift; sourceTree = "<group>"; };
 		5B8BB0887A598FACA380DA0F /* ClipboardManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardManager.swift; sourceTree = "<group>"; };
+		7AAD67E7888D35A8B76ECEA2 /* ScreenGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenGeometry.swift; sourceTree = "<group>"; };
 		8C00E3D9766E7C56EAD782AD /* RegionSelectionWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegionSelectionWindow.swift; sourceTree = "<group>"; };
 		9323C0BE2D3D164F0F5207A1 /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
 		9515F0D59C2FC48502A2891A /* CaptureError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureError.swift; sourceTree = "<group>"; };
@@ -91,6 +93,7 @@
 				EE7CC1A25140A1A1451CDB53 /* HotkeyManager.swift */,
 				4212AFDD7C4461F670D96EAA /* PermissionManager.swift */,
 				093C5C8DC0A56253C045C600 /* ScreenCaptureService.swift */,
+				7AAD67E7888D35A8B76ECEA2 /* ScreenGeometry.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -157,7 +160,6 @@
 				};
 			};
 			buildConfigurationList = B37B9D2179C01F3994547FA8 /* Build configuration list for PBXProject "Shotter" */;
-			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -167,6 +169,7 @@
 			mainGroup = 68602573DCB891FF87D41D85;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
+			productRefGroup = 9815E6D799896EDFEB18DB0C /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -202,6 +205,7 @@
 				86AB7F43CD8DF27C39008490 /* PreferencesView.swift in Sources */,
 				780877CC5C5E49DA45267428 /* RegionSelectionWindow.swift in Sources */,
 				C63EA95152395C863F9A30BA /* ScreenCaptureService.swift in Sources */,
+				62D6F4E8202340CCFC8F29FA /* ScreenGeometry.swift in Sources */,
 				768E494957596A6D297CF360 /* ShotterApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

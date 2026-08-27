@@ -13,7 +13,7 @@ final class ScreenCaptureService: ObservableObject {
 
     // MARK: - Public Capture Methods
 
-    /// Captures the full screen (primary display) and copies to clipboard
+    /// Captures the full screen (display under mouse cursor) and copies to clipboard
     func captureFullScreen() async throws -> NSImage {
         if !permissionManager.isAuthorized {
             await permissionManager.requestPermission()
@@ -53,27 +53,47 @@ final class ScreenCaptureService: ObservableObject {
         return try captureWindowLegacy(windowID)
     }
 
+    // MARK: - Display Helpers
+
+    /// Returns the mouse location in CG coordinate space (top-left origin)
+    private var mouseLocationCG: CGPoint {
+        NSScreen.convertToCGGlobal(NSEvent.mouseLocation)
+    }
+
+    /// Finds the SCDisplay containing the given point in CG coordinates
+    private func displayContaining(cgPoint: CGPoint, in displays: [SCDisplay]) -> SCDisplay? {
+        displays.first { $0.frame.contains(cgPoint) }
+    }
+
     // MARK: - ScreenCaptureKit Implementation
 
     private func captureFullScreenModern() async throws -> NSImage {
+        // Capture mouse position before any async work to avoid race conditions
+        let mouseCG = mouseLocationCG
+
         let content = try await SCShareableContent.excludingDesktopWindows(
             false,
             onScreenWindowsOnly: true
         )
 
-        guard let display = content.displays.first else {
+        guard !content.displays.isEmpty else {
             throw CaptureError.noDisplaysFound
         }
+
+        // Find the display under the mouse cursor
+        let display = displayContaining(cgPoint: mouseCG, in: content.displays)
+            ?? content.displays[0]
 
         let filter = SCContentFilter(display: display, excludingWindows: [])
         let config = SCStreamConfiguration()
 
-        config.width = display.width * 2  // Retina
-        config.height = display.height * 2
+        // contentRect is in points; pointPixelScale converts it to the native pixel buffer size.
+        // Both come from the filter itself, so no guessing about Retina vs. 1x monitors.
+        config.width = Int((filter.contentRect.width * CGFloat(filter.pointPixelScale)).rounded())
+        config.height = Int((filter.contentRect.height * CGFloat(filter.pointPixelScale)).rounded())
         config.showsCursor = false
 
-        let image = try await captureWithFilter(filter, configuration: config)
-        return image
+        return try await captureWithFilter(filter, configuration: config)
     }
 
     private func captureRegionModern(_ rect: CGRect) async throws -> NSImage {
@@ -82,31 +102,71 @@ final class ScreenCaptureService: ObservableObject {
             onScreenWindowsOnly: true
         )
 
-        // Find display containing the rect
-        guard let display = content.displays.first else {
+        guard !content.displays.isEmpty else {
             throw CaptureError.noDisplaysFound
         }
 
-        let filter = SCContentFilter(display: display, excludingWindows: [])
-        let config = SCStreamConfiguration()
+        // Find the display containing the center of the selected region
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let display = displayContaining(cgPoint: center, in: content.displays)
+            ?? content.displays[0]
 
-        // Set source rect for region capture
-        config.sourceRect = rect
-        config.width = Int(rect.width) * 2
-        config.height = Int(rect.height) * 2
+        let filter = SCContentFilter(display: display, excludingWindows: [])
+
+        // Convert the global CG rect to display-local points, clamped to the display.
+        // Cross-monitor selections are intentionally clipped, not stitched.
+        let localRect = CGRect(
+            x: rect.origin.x - display.frame.origin.x,
+            y: rect.origin.y - display.frame.origin.y,
+            width: rect.width,
+            height: rect.height
+        )
+        let clampedRect = localRect.intersection(CGRect(origin: .zero, size: filter.contentRect.size))
+
+        guard !clampedRect.isEmpty else {
+            throw CaptureError.invalidRegion
+        }
+
+        // Capture the whole display at native resolution, then crop.
+        //
+        // Deliberately NOT using SCStreamConfiguration.sourceRect: ScreenCaptureKit fits the
+        // source into the destination buffer using its own aspect-preserving, non-upscaling
+        // policy and leaves the remainder transparent. That is what produced images of the
+        // right size whose content sat in one corner surrounded by blank space. A crop in
+        // pixel space is exact by construction and has no such policy to fight.
+        let config = SCStreamConfiguration()
+        config.width = Int((filter.contentRect.width * CGFloat(filter.pointPixelScale)).rounded())
+        config.height = Int((filter.contentRect.height * CGFloat(filter.pointPixelScale)).rounded())
         config.showsCursor = false
 
-        let image = try await captureWithFilter(filter, configuration: config)
-        return image
+        let fullImage = try await captureCGImage(filter, configuration: config)
+
+        // Derive pixels-per-point from the image that actually came back rather than trusting
+        // a precomputed scale, so the crop stays correct even if SCK hands back another size.
+        let scaleX = CGFloat(fullImage.width) / filter.contentRect.width
+        let scaleY = CGFloat(fullImage.height) / filter.contentRect.height
+
+        let cropRect = CGRect(
+            x: clampedRect.minX * scaleX,
+            y: clampedRect.minY * scaleY,
+            width: clampedRect.width * scaleX,
+            height: clampedRect.height * scaleY
+        ).integral.intersection(
+            CGRect(x: 0, y: 0, width: CGFloat(fullImage.width), height: CGFloat(fullImage.height))
+        )
+
+        guard cropRect.width >= 1, cropRect.height >= 1,
+              let cropped = fullImage.cropping(to: cropRect) else {
+            throw CaptureError.invalidRegion
+        }
+
+        return NSImage(cgImage: cropped, size: NSSize(width: cropped.width, height: cropped.height))
     }
 
     private func captureWithFilter(_ filter: SCContentFilter, configuration: SCStreamConfiguration) async throws -> NSImage {
         // Use SCScreenshotManager for single frame capture (macOS 14+)
         if #available(macOS 14.0, *) {
-            let cgImage = try await SCScreenshotManager.captureImage(
-                contentFilter: filter,
-                configuration: configuration
-            )
+            let cgImage = try await captureCGImage(filter, configuration: configuration)
             return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
         }
 
@@ -130,6 +190,11 @@ final class ScreenCaptureService: ObservableObject {
                 }
             }
         }
+    }
+
+    @available(macOS 14.0, *)
+    private func captureCGImage(_ filter: SCContentFilter, configuration: SCStreamConfiguration) async throws -> CGImage {
+        try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
     }
 
     // MARK: - Legacy Implementation (CGWindowList)
