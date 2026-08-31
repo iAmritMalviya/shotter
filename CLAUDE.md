@@ -33,7 +33,22 @@ Every capture path converges on `MenuBarController`: hotkeys (`AppDelegate.regis
 
 ### Region selection overlay
 - `ScreenGeometry.swift` owns the AppKit↔CoreGraphics conversion for the whole app. AppKit global coords are bottom-left origin with Y up; CoreGraphics (and therefore ScreenCaptureKit) is top-left with Y down. Anything crossing that boundary — the selection rect and the mouse location used to pick the full-screen display — flips through there, not by hand.
-- `RegionSelectionWindow` is a borderless `.screenSaver`-level `NSWindow` spanning the union of all screens; Escape cancels via a local `NSEvent` monitor (keyCode 53) that is torn down in both the complete and cancel paths.
+- `RegionSelectionWindow` is a controller, **not** a window. It creates one borderless
+  `.screenSaver`-level `NSPanel` **per `NSScreen`** (`RegionSelectionPanel`), each sized to exactly
+  that screen. It must not go back to a single panel spanning the union of all screens: with
+  "Displays have Separate Spaces" on — the macOS default, `defaults read com.apple.spaces
+  spans-displays` returns `0` — a window **cannot** span two displays, so the union-sized overlay
+  was confined to one display and covered only part of the desktop.
+- The panels are independent. AppKit keeps delivering a drag to the window where the mouse went
+  down even after the pointer leaves it, so the panel the drag started on tracks the whole
+  selection while the others just dim their screen. That matches capture, which clips a selection
+  to the display under its centre rather than stitching across displays.
+- Panels are rebuilt only when the screen arrangement changes; Escape cancels via a single local
+  `NSEvent` monitor (keyCode 53) owned by the controller and torn down on both paths.
+- The panels are `.nonactivatingPanel` so they take keyboard focus without activating Shotter (no
+  app-switch transition). A consequence: `NSCursor.push()` alone does not apply, because the
+  active app's cursor wins — the capture cursor is re-applied from an `.activeAlways` tracking
+  area in `mouseEntered`/`mouseMoved` (`cursorUpdate:` is not delivered for `.activeAlways`).
 - `RegionSelectionView.convertToScreenCoordinates` converts view → window → AppKit screen coords, then flips into CG (top-left origin) space via `NSScreen.convertToCGGlobal`. AppKit and CG global space are both anchored on the **primary** display, so the flip must use the primary's height — `ScreenGeometry.swift` resolves it as the screen at AppKit origin `(0,0)`. It must not index `NSScreen.screens[0]` (not guaranteed to be primary, and traps on an empty array) nor use `NSScreen.main` (that is the key-window screen, usually not the primary).
 - Drags under 10×10 points are treated as a cancel, not a capture.
 

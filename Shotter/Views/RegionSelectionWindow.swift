@@ -1,58 +1,147 @@
 import AppKit
 
-/// Full-screen overlay used to drag out a capture region.
+/// macOS's own screenshot-selection cursor — the dotted reticle Cmd+Shift+4 uses — loaded from
+/// the HIServices cursor resources so the overlay matches the system screenshot UI instead of
+/// the thinner, plainer `NSCursor.crosshair`.
 ///
-/// This is an `NSPanel` with `.nonactivatingPanel`, not a plain `NSWindow`, so it can take
-/// keyboard focus *without* activating Shotter. Activating an LSUIElement app to show the
-/// overlay causes a visible app-switch (and sometimes a Space-switch) transition before the
-/// crosshair appears, which is exactly the lag the system screenshot UI does not have.
-final class RegionSelectionWindow: NSPanel {
-    private var selectionView: RegionSelectionView!
+/// The path is stable but undocumented, so this falls back to `.crosshair` if the resource ever
+/// moves. Reading a system asset at a fixed path is already how the capture sound is sourced
+/// (see `MenuBarController.setupCaptureSound`).
+private let captureCursor: NSCursor = {
+    let directory = "/System/Library/Frameworks/ApplicationServices.framework/Frameworks"
+        + "/HIServices.framework/Versions/A/Resources/cursors/screenshotselection"
+
+    guard let image = NSImage(contentsOfFile: "\(directory)/cursor.pdf"), image.isValid else {
+        return .crosshair
+    }
+
+    // hotx/hoty are in the cursor's own flipped (top-left origin) space, which is the same
+    // space NSCursor expects for its hot spot.
+    let info = NSDictionary(contentsOfFile: "\(directory)/info.plist")
+    return NSCursor(
+        image: image,
+        hotSpot: NSPoint(
+            x: (info?["hotx"] as? NSNumber)?.doubleValue ?? image.size.width / 2,
+            y: (info?["hoty"] as? NSNumber)?.doubleValue ?? image.size.height / 2
+        )
+    )
+}()
+
+/// Drives region selection across every attached display.
+///
+/// One panel is created **per screen** rather than a single panel spanning their union. With
+/// "Displays have Separate Spaces" enabled — the macOS default — a window cannot span two
+/// displays: the system confines it to one, so a union-sized overlay ended up covering only
+/// part of the desktop, sized for the wrong display.
+///
+/// The panels are otherwise independent. AppKit keeps delivering a drag to the window where the
+/// mouse went down even after the pointer leaves it, so the panel the drag started on tracks the
+/// whole selection; the others just dim their screen. That matches how capture already behaves —
+/// a selection is clipped to the display under its centre, never stitched across displays.
+@MainActor
+final class RegionSelectionWindow {
+    private var panels: [RegionSelectionPanel] = []
     private var completionHandler: ((CGRect?) -> Void)?
     private var keyMonitor: Any?
     private var isSessionActive = false
 
-    /// macOS's own screenshot-selection cursor — the dotted reticle Cmd+Shift+4 uses — loaded
-    /// from the HIServices cursor resources so the overlay matches the system screenshot UI
-    /// instead of the thinner, plainer `NSCursor.crosshair`.
-    ///
-    /// The path is stable but undocumented, so this falls back to `.crosshair` if the resource
-    /// ever moves. Reading a system asset at a fixed path is already how the capture sound is
-    /// sourced (see `MenuBarController.setupCaptureSound`).
-    fileprivate static let captureCursor: NSCursor = {
-        let directory = "/System/Library/Frameworks/ApplicationServices.framework/Frameworks"
-            + "/HIServices.framework/Versions/A/Resources/cursors/screenshotselection"
+    func beginSelection(completion: @escaping (CGRect?) -> Void) {
+        // The global hotkey keeps firing while the overlay is already up. Tear any previous
+        // session down rather than ignoring the press: stacking a second cursor push and event
+        // monitor against a single pop and removal would leave the capture cursor stuck
+        // system-wide, but ignoring re-entry would make the hotkey dead for good if a session
+        // ever failed to finish.
+        if isSessionActive {
+            teardownSession()
+            completionHandler = nil
+        }
+        isSessionActive = true
+        completionHandler = completion
 
-        guard let image = NSImage(contentsOfFile: "\(directory)/cursor.pdf"), image.isValid else {
-            return .crosshair
+        rebuildPanelsIfScreensChanged()
+        for panel in panels {
+            panel.resetSelection()
         }
 
-        // hotx/hoty are in the cursor's own flipped (top-left origin) space, which is the same
-        // space NSCursor expects for its hot spot.
-        let info = NSDictionary(contentsOfFile: "\(directory)/info.plist")
-        let hotSpot = NSPoint(
-            x: (info?["hotx"] as? NSNumber)?.doubleValue ?? image.size.width / 2,
-            y: (info?["hoty"] as? NSNumber)?.doubleValue ?? image.size.height / 2
-        )
-        return NSCursor(image: image, hotSpot: hotSpot)
-    }()
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == 53 { // Escape key
+                self?.finish(with: nil)
+                return nil
+            }
+            return event
+        }
 
-    /// The rect spanning every attached screen, in AppKit global coordinates.
-    private static var unionFrame: CGRect {
-        NSScreen.screens.reduce(CGRect.null) { $0.union($1.frame) }
+        // Show every panel; make the one under the pointer key so it receives Escape.
+        // Deliberately no NSApp.activate() — a nonactivating panel takes keyboard input
+        // without making Shotter the active app, which avoids an app-switch transition.
+        let mouse = NSEvent.mouseLocation
+        for panel in panels {
+            panel.orderFrontRegardless()
+        }
+        let focused = panels.first { $0.frame.contains(mouse) } ?? panels.first
+        focused?.makeKeyAndOrderFront(nil)
+        focused?.focusSelectionView()
+
+        captureCursor.push()
     }
 
-    init() {
-        let screenFrame = Self.unionFrame
+    /// Rebuilds the per-screen panels when the display arrangement has changed.
+    private func rebuildPanelsIfScreensChanged() {
+        let screens = NSScreen.screens
+        let unchanged = panels.count == screens.count
+            && zip(panels, screens).allSatisfy { $0.frame == $1.frame }
+        guard !unchanged else { return }
+
+        for panel in panels {
+            panel.orderOut(nil)
+        }
+        panels = screens.map { screen in
+            RegionSelectionPanel(screen: screen) { [weak self] rect in
+                self?.finish(with: rect)
+            }
+        }
+    }
+
+    /// Undoes what `beginSelection` set up, without notifying the caller.
+    private func teardownSession() {
+        guard isSessionActive else { return }
+        isSessionActive = false
+
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
+        NSCursor.pop()
+    }
+
+    private func finish(with rect: CGRect?) {
+        guard isSessionActive, let handler = completionHandler else { return }
+        completionHandler = nil          // guard against a panel reporting twice
+        teardownSession()
+        for panel in panels {
+            panel.orderOut(nil)
+        }
+        handler(rect)
+    }
+}
+
+// MARK: - Per-screen Panel
+
+/// A borderless overlay covering exactly one screen.
+final class RegionSelectionPanel: NSPanel {
+    private let selectionView: RegionSelectionView
+
+    /// - Parameter onFinish: passed the selected rect in CG global coordinates, or nil on cancel.
+    init(screen: NSScreen, onFinish: @escaping (CGRect?) -> Void) {
+        selectionView = RegionSelectionView(frame: CGRect(origin: .zero, size: screen.frame.size))
 
         super.init(
-            contentRect: screenFrame,
+            contentRect: screen.frame,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
 
-        // Configure window for selection overlay
         self.isOpaque = false
         self.backgroundColor = .clear
         self.hidesOnDeactivate = false      // NSPanel defaults to true; would yank the overlay away
@@ -61,75 +150,19 @@ final class RegionSelectionWindow: NSPanel {
         self.acceptsMouseMovedEvents = true
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
 
-        // Set up selection view
-        selectionView = RegionSelectionView(frame: CGRect(origin: .zero, size: screenFrame.size))
-        selectionView.onSelectionComplete = { [weak self] rect in
-            self?.completeSelection(rect: rect)
-        }
-        selectionView.onSelectionCancelled = { [weak self] in
-            self?.cancelSelection()
-        }
+        selectionView.onSelectionComplete = { rect in onFinish(rect) }
+        selectionView.onSelectionCancelled = { onFinish(nil) }
         self.contentView = selectionView
-    }
-
-    func beginSelection(completion: @escaping (CGRect?) -> Void) {
-        // The global hotkey keeps firing while the overlay is already up. Ignore re-entry:
-        // starting a second session would stack another cursor push and another event monitor
-        // against a single pop and a single removal, leaving the capture cursor stuck
-        // system-wide once the selection finishes.
-        guard !isSessionActive else { return }
-        isSessionActive = true
-
-        self.completionHandler = completion
-
-        // The overlay is reused across captures, so re-fit it to the current screen
-        // arrangement and clear any leftover selection before showing it again.
-        let screenFrame = Self.unionFrame
-        setFrame(screenFrame, display: false)
-        selectionView.frame = CGRect(origin: .zero, size: screenFrame.size)
-        selectionView.reset()
-
-        // Add local monitor for Escape key
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode == 53 { // Escape key
-                self?.cancelSelection()
-                return nil
-            }
-            return event
-        }
-
-        // Show window and capture mouse. Deliberately no NSApp.activate() — a nonactivating
-        // panel receives keyboard input without making Shotter the active app.
-        self.makeKeyAndOrderFront(nil)
-        self.makeFirstResponder(selectionView)
-        Self.captureCursor.push()
     }
 
     override var canBecomeKey: Bool { true }
 
-    private func removeKeyMonitor() {
-        if let monitor = keyMonitor {
-            NSEvent.removeMonitor(monitor)
-            keyMonitor = nil
-        }
+    func resetSelection() {
+        selectionView.reset()
     }
 
-    private func finish(with rect: CGRect?) {
-        guard isSessionActive, let handler = completionHandler else { return }
-        isSessionActive = false
-        completionHandler = nil          // guard against the view reporting twice
-        removeKeyMonitor()
-        NSCursor.pop()
-        self.orderOut(nil)
-        handler(rect)
-    }
-
-    private func cancelSelection() {
-        finish(with: nil)
-    }
-
-    private func completeSelection(rect: CGRect) {
-        finish(with: rect)
+    func focusSelectionView() {
+        makeFirstResponder(selectionView)
     }
 }
 
@@ -146,9 +179,16 @@ final class RegionSelectionView: NSView {
 
     override var acceptsFirstResponder: Bool { true }
 
-    // The overlay panel is deliberately non-activating, so Shotter never becomes the active
-    // app. NSCursor.push() alone does not survive that — the active app's cursor wins — which
-    // is why the crosshair kept showing instead of the screenshot reticle. An .activeAlways
+    func reset() {
+        startPoint = nil
+        currentRect = nil
+        isDragging = false
+        needsDisplay = true
+    }
+
+    // The overlay panels are deliberately non-activating, so Shotter never becomes the active
+    // app. NSCursor.push() alone does not survive that — the active app's cursor wins — which is
+    // why the crosshair kept showing instead of the screenshot reticle. An .activeAlways
     // tracking area still delivers mouse events to an inactive app, so the cursor is re-applied
     // on entry and on every move. (cursorUpdate: is not delivered for .activeAlways areas, so
     // mouseEntered/mouseMoved are what actually carry this.)
@@ -169,19 +209,12 @@ final class RegionSelectionView: NSView {
     }
 
     private func applyCaptureCursor() {
-        RegionSelectionWindow.captureCursor.set()
+        captureCursor.set()
     }
 
     override func cursorUpdate(with event: NSEvent) { applyCaptureCursor() }
     override func mouseEntered(with event: NSEvent) { applyCaptureCursor() }
     override func mouseMoved(with event: NSEvent) { applyCaptureCursor() }
-
-    func reset() {
-        startPoint = nil
-        currentRect = nil
-        isDragging = false
-        needsDisplay = true
-    }
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 { // Escape key
@@ -193,8 +226,8 @@ final class RegionSelectionView: NSView {
         let context = NSGraphicsContext.current
 
         // .copy rather than the default .sourceOver: only the dirty region is repainted while
-        // dragging, and blending 30% black over an area that already has 30% black would
-        // darken it a little more on every mouse-moved event.
+        // dragging, and blending 30% black over an area that already has 30% black would darken
+        // it a little more on every mouse-moved event.
         context?.compositingOperation = .copy
         NSColor.black.withAlphaComponent(0.3).setFill()
         dirtyRect.fill()
@@ -221,10 +254,9 @@ final class RegionSelectionView: NSView {
 
     /// Repaints only the area the selection actually touched.
     ///
-    /// The previous code set `needsDisplay = true` on every mouse-moved event, forcing a repaint
-    /// of the entire multi-screen overlay (here 4000x1440 points) for each drag sample, which is
-    /// what made dragging feel heavy. The inset covers the dashed border and the dimensions
-    /// label, both of which draw outside the selection rect.
+    /// Setting `needsDisplay = true` on every mouse-moved event repaints the whole overlay for
+    /// each drag sample, which is what made dragging feel heavy. The inset covers the dashed
+    /// border and the dimensions label, both of which draw outside the selection rect.
     private func invalidate(_ first: CGRect?, _ second: CGRect?) {
         var dirty = CGRect.null
         if let first { dirty = dirty.union(first) }
@@ -299,8 +331,7 @@ final class RegionSelectionView: NSView {
 
         if let rect = currentRect, rect.width > 10 && rect.height > 10 {
             // Convert to screen coordinates
-            let screenRect = convertToScreenCoordinates(rect)
-            onSelectionComplete?(screenRect)
+            onSelectionComplete?(convertToScreenCoordinates(rect))
         } else {
             onSelectionCancelled?()
         }
@@ -321,7 +352,7 @@ final class RegionSelectionView: NSView {
         )
 
         // Flip Y: AppKit (bottom-left origin) → CG (top-left origin), anchored on the primary
-        // display. This used to index NSScreen.screens[0], which is not guaranteed to be the
+        // display. This must not index NSScreen.screens[0], which is not guaranteed to be the
         // primary and traps on an empty array.
         return NSScreen.convertToCGGlobal(screenRect)
     }
