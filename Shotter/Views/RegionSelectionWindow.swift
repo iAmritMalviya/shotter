@@ -179,6 +179,17 @@ final class RegionSelectionView: NSView {
 
     override var acceptsFirstResponder: Bool { true }
 
+    /// Take the mouse-down that begins a drag even when this panel is not the key window.
+    ///
+    /// Only one window per app can be key, so `beginSelection` can only hand key status to the
+    /// panel under the pointer; every other screen's panel is a background window. AppKit
+    /// swallows the first mouse-down in a background window unless the view opts in here, so a
+    /// drag started on any other display lost its `mouseDown:` — `isDragging` stayed false,
+    /// `mouseDragged:` bailed out immediately, and that screen looked like it was ignoring the
+    /// selection even though its overlay was drawn. These panels exist only to take that drag,
+    /// so all of them accept it, whichever one happens to hold key focus.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     func reset() {
         startPoint = nil
         currentRect = nil
