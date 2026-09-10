@@ -2,7 +2,13 @@ import AppKit
 
 /// macOS's own screenshot-selection cursor — the dotted reticle Cmd+Shift+4 uses — loaded from
 /// the HIServices cursor resources so the overlay matches the system screenshot UI instead of
-/// the thinner, plainer `NSCursor.crosshair`.
+/// the thinner, plainer `NSCursor.crosshair`, then recoloured white.
+///
+/// The system reticle is predominantly dark, and every panel lays 30% black over its screen, so
+/// the stock artwork reads poorly against the dimmed desktop. White alone would only move the
+/// problem: it disappears over a region that is bright enough to survive the dim, such as a white
+/// document. So the whitened glyph is drawn under a black shadow with no offset — the halo hugs
+/// the reticle's own outline and gives it an edge against dark and light content alike.
 ///
 /// The path is stable but undocumented, so this falls back to `.crosshair` if the resource ever
 /// moves. Reading a system asset at a fixed path is already how the capture sound is sourced
@@ -11,18 +17,47 @@ private let captureCursor: NSCursor = {
     let directory = "/System/Library/Frameworks/ApplicationServices.framework/Frameworks"
         + "/HIServices.framework/Versions/A/Resources/cursors/screenshotselection"
 
-    guard let image = NSImage(contentsOfFile: "\(directory)/cursor.pdf"), image.isValid else {
+    guard let reticle = NSImage(contentsOfFile: "\(directory)/cursor.pdf"), reticle.isValid else {
         return .crosshair
+    }
+    let size = reticle.size
+
+    // Both stages go through `NSImage(size:flipped:drawingHandler:)`, whose handler is re-run for
+    // each backing scale it is asked to draw at. `cursor.pdf` is a vector `NSPDFImageRep`, so the
+    // reticle is re-rendered — not upscaled — on the 2x built-in display.
+    let whitened = NSImage(size: size, flipped: false) { rect in
+        reticle.draw(in: rect)
+        // .sourceAtop recolours the glyph and leaves the transparent surround untouched.
+        NSColor.white.setFill()
+        rect.fill(using: .sourceAtop)
+        return true
+    }
+
+    let haloed = NSImage(size: size, flipped: false) { rect in
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.8)
+        shadow.shadowBlurRadius = 2
+        shadow.shadowOffset = .zero
+        shadow.set()
+
+        // The white has to be baked into `whitened` already: tinting .sourceAtop here would
+        // whiten the shadow along with the glyph and leave no halo behind.
+        whitened.draw(in: rect)
+        return true
     }
 
     // hotx/hoty are in the cursor's own flipped (top-left origin) space, which is the same
-    // space NSCursor expects for its hot spot.
+    // space NSCursor expects for its hot spot. Recolouring preserves the artwork's geometry, so
+    // the resource's own hot spot still lands on the centre of the reticle.
     let info = NSDictionary(contentsOfFile: "\(directory)/info.plist")
     return NSCursor(
-        image: image,
+        image: haloed,
         hotSpot: NSPoint(
-            x: (info?["hotx"] as? NSNumber)?.doubleValue ?? image.size.width / 2,
-            y: (info?["hoty"] as? NSNumber)?.doubleValue ?? image.size.height / 2
+            x: (info?["hotx"] as? NSNumber)?.doubleValue ?? size.width / 2,
+            y: (info?["hoty"] as? NSNumber)?.doubleValue ?? size.height / 2
         )
     )
 }()
