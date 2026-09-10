@@ -162,7 +162,12 @@ final class MenuBarController: ObservableObject {
         captureService.prewarmShareableContent()
 
         regionSelectionWindow.beginSelection { [weak self] rect in
-            guard let self = self, let rect = rect else { return }
+            guard let self = self else { return }
+            guard let rect = rect else {
+                // Cancelled — drop the prefetch instead of leaving it for the next capture.
+                self.captureService.discardPrewarmedContent()
+                return
+            }
 
             Task {
                 do {

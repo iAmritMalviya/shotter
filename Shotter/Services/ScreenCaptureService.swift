@@ -29,6 +29,17 @@ final class ScreenCaptureService: ObservableObject {
         }
     }
 
+    /// Throws away a prefetch whose capture never happened.
+    ///
+    /// `shareableContent()` consumes `pendingContent` exactly once and nothing else clears it, so
+    /// a cancelled region selection used to leave the fetch sitting there for whatever captured
+    /// next to pick up — defeating the "fetched at overlay-open time so the display list cannot go
+    /// stale" guarantee above, since by then the list could be arbitrarily old.
+    func discardPrewarmedContent() {
+        pendingContent?.cancel()
+        pendingContent = nil
+    }
+
     private func shareableContent() async throws -> SCShareableContent {
         if let pending = pendingContent {
             pendingContent = nil
