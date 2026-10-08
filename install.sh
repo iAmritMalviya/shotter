@@ -23,7 +23,16 @@ if [[ -f "$SIGNING_KEYCHAIN" && -f "$SIGNING_PASS_FILE" ]]; then
     # The signing keychain is not the login keychain, so macOS does not unlock it at login.
     # After a reboot it is locked and the CodeSign build step fails with
     # errSecInternalComponent, which looks like signing "randomly stopped working".
+    #
+    # Lock it explicitly first. securityd can leave this keychain in a state where
+    # unlock-keychain rejects the *correct* password with "The user name or passphrase you
+    # entered is not correct" — observed after a codesign process was killed mid-build.
+    # Locking it clears that state and the stored password then works. Without this the
+    # failure is indistinguishable from a wrong password, and the obvious next move,
+    # setup-signing.sh --force, issues a new certificate and throws the Screen Recording
+    # grant away — the exact bug the signing setup exists to prevent.
     echo "==> Unlocking signing keychain"
+    security lock-keychain "$SIGNING_KEYCHAIN" 2>/dev/null || true
     security unlock-keychain -p "$(cat "$SIGNING_PASS_FILE")" "$SIGNING_KEYCHAIN"
 elif ! security find-identity -p codesigning | grep -q "Shotter Local Signing"; then
     echo "warning: no 'Shotter Local Signing' identity found." >&2

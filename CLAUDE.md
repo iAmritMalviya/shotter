@@ -98,6 +98,13 @@ Notes on the setup, all of which cost time to discover:
 - macOS does **not** unlock this keychain at login the way it does the login keychain, so
   `install.sh` unlocks it before building. Without that, the first build after a reboot fails
   with `errSecInternalComponent` and looks like signing spontaneously broke.
+- `install.sh` **locks the keychain before unlocking it**. securityd can leave it in a state
+  where `security unlock-keychain` rejects the correct password with "The user name or
+  passphrase you entered is not correct" — reproduced after a `codesign` process was killed
+  mid-build. `security lock-keychain` first clears that state and the stored password then
+  works. This matters because the symptom is indistinguishable from a lost password, and the
+  apparent remedy — `setup-signing.sh --force` — reissues the certificate and discards the
+  Screen Recording grant.
 - `setup-signing.sh` is idempotent and refuses to regenerate unless given `--force`. Forcing it
   issues a **new** certificate, which changes the designated requirement and throws away the
   Screen Recording grant — reintroducing the exact bug it exists to prevent.
