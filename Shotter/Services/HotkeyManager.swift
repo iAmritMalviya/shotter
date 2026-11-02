@@ -78,11 +78,19 @@ final class HotkeyManager: ObservableObject {
                     &hotKeyID
                 )
 
-                guard error == noErr else { return error }
+                guard error == noErr else {
+                    Log.hotkey.error("hotkey event received but its ID could not be read, status=\(error)")
+                    return error
+                }
+
+                // Logged before the hop to the main queue, so "the hotkey fired" stays
+                // distinguishable from "the main thread was too busy to act on it".
+                Log.hotkey.notice("hotkey event received id=\(hotKeyID.id)")
+                let receivedAt = DispatchTime.now().uptimeNanoseconds
 
                 // Dispatch to main thread
                 DispatchQueue.main.async {
-                    hotkeyManagerInstance?.handleHotkey(id: Int(hotKeyID.id))
+                    hotkeyManagerInstance?.handleHotkey(id: Int(hotKeyID.id), receivedAt: receivedAt)
                 }
 
                 return noErr
@@ -94,7 +102,7 @@ final class HotkeyManager: ObservableObject {
         )
 
         if status != noErr {
-            print("HotkeyManager: Failed to install event handler, error: \(status)")
+            Log.hotkey.error("failed to install the hotkey event handler, status=\(status)")
         }
     }
 
@@ -107,11 +115,16 @@ final class HotkeyManager: ObservableObject {
 
     // MARK: - Hotkey Handling
 
-    private func handleHotkey(id: Int) {
+    private func handleHotkey(id: Int, receivedAt: UInt64) {
+        let queuedMs = (DispatchTime.now().uptimeNanoseconds - receivedAt) / 1_000_000
         guard let action = HotkeyAction(rawValue: id),
               let callback = actions[action] else {
+            Log.hotkey.error("hotkey id=\(id) has no registered action; dropped")
             return
         }
+        // A large delay here means the main thread was blocked (e.g. a modal alert) when the
+        // key was pressed.
+        Log.hotkey.notice("hotkey \(String(describing: action), privacy: .public) dispatched after \(queuedMs)ms on the main queue")
         callback()
     }
 
@@ -143,7 +156,8 @@ final class HotkeyManager: ObservableObject {
         )
 
         guard status == noErr else {
-            print("HotkeyManager: Failed to register \(action), error: \(status)")
+            // e.g. eventHotKeyExistsErr (-9878) when another app already owns the combination.
+            Log.hotkey.error("failed to register \(String(describing: action), privacy: .public) as \(config.displayString, privacy: .public), status=\(status)")
             return
         }
 
@@ -157,7 +171,7 @@ final class HotkeyManager: ObservableObject {
             windowHotKeyRef = hotKeyRef
         }
 
-        print("HotkeyManager: Registered \(action) with \(config.displayString)")
+        Log.hotkey.notice("registered \(String(describing: action), privacy: .public) as \(config.displayString, privacy: .public)")
     }
 
     func unregister(_ action: HotkeyAction) {

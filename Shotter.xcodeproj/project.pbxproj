@@ -10,6 +10,7 @@
 		4D8B2FC843E839615DBA6530 /* ClipboardManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B8BB0887A598FACA380DA0F /* ClipboardManager.swift */; };
 		566EA11CA50BACC531EAE44F /* CaptureMode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47271F1FE0705E96523BB8E4 /* CaptureMode.swift */; };
 		5A7F689DBA9F918876590FAF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = DA40FEF0B24C4AD9DF59D1A4 /* Assets.xcassets */; };
+		611F8DFB62A8EB6B9D12145D /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = F44F97B764E3D3CF2EAD12D4 /* Log.swift */; };
 		62D6F4E8202340CCFC8F29FA /* ScreenGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AAD67E7888D35A8B76ECEA2 /* ScreenGeometry.swift */; };
 		73475E09946B8187C9FC64FF /* HotkeyConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53770781E0AB4684F469EC25 /* HotkeyConfiguration.swift */; };
 		746CAD14E24DF7D92AAFC5E5 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEC6B9FAC52F63A9E2F31615 /* MenuBarController.swift */; };
@@ -41,6 +42,7 @@
 		DAFCDCD66B542AC463C39982 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		E241E99787795B3078217A5C /* ShotterApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotterApp.swift; sourceTree = "<group>"; };
 		EE7CC1A25140A1A1451CDB53 /* HotkeyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyManager.swift; sourceTree = "<group>"; };
+		F44F97B764E3D3CF2EAD12D4 /* Log.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Log.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -91,6 +93,7 @@
 			children = (
 				5B8BB0887A598FACA380DA0F /* ClipboardManager.swift */,
 				EE7CC1A25140A1A1451CDB53 /* HotkeyManager.swift */,
+				F44F97B764E3D3CF2EAD12D4 /* Log.swift */,
 				4212AFDD7C4461F670D96EAA /* PermissionManager.swift */,
 				093C5C8DC0A56253C045C600 /* ScreenCaptureService.swift */,
 				7AAD67E7888D35A8B76ECEA2 /* ScreenGeometry.swift */,
@@ -199,6 +202,7 @@
 				4D8B2FC843E839615DBA6530 /* ClipboardManager.swift in Sources */,
 				73475E09946B8187C9FC64FF /* HotkeyConfiguration.swift in Sources */,
 				B0AD414A38F126716DDB3BB8 /* HotkeyManager.swift in Sources */,
+				611F8DFB62A8EB6B9D12145D /* Log.swift in Sources */,
 				746CAD14E24DF7D92AAFC5E5 /* MenuBarController.swift in Sources */,
 				B5B7F32DB41F7F608EAA6C72 /* PermissionManager.swift in Sources */,
 				86AB7F43CD8DF27C39008490 /* PreferencesView.swift in Sources */,

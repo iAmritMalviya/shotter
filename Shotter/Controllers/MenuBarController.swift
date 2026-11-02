@@ -158,6 +158,8 @@ final class MenuBarController: ObservableObject {
     }
 
     @objc func captureRegion() {
+        Log.capture.notice("captureRegion invoked, permissionAuthorized=\(self.permissionManager.isAuthorized)")
+
         // Overlap the ~40ms shareable-content fetch with the user's drag.
         captureService.prewarmShareableContent()
 
@@ -170,10 +172,13 @@ final class MenuBarController: ObservableObject {
             }
 
             Task {
+                let started = Date()
                 do {
                     let image = try await self.captureService.captureRegion(rect)
                     self.clipboardManager.copy(image: image)
                     self.showSuccessFeedback()
+                    let ms = Int(Date().timeIntervalSince(started) * 1000)
+                    Log.capture.notice("region captured \(Int(image.size.width))x\(Int(image.size.height))px in \(ms)ms")
                 } catch {
                     self.showErrorAlert(error)
                 }
@@ -266,6 +271,7 @@ final class MenuBarController: ObservableObject {
     }
 
     private func showErrorAlert(_ error: Error) {
+        Log.capture.error("capture failed: \(String(describing: error), privacy: .public) (\(error.localizedDescription, privacy: .public)); showing modal alert, frontmost=\(frontmostAppName(), privacy: .public)")
         let alert = NSAlert()
         alert.messageText = "Capture Failed"
         alert.informativeText = error.localizedDescription

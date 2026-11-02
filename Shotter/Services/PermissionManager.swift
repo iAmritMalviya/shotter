@@ -35,11 +35,12 @@ final class PermissionManager: ObservableObject {
             // If we get here without error, we have permission
             isAuthorized = !content.displays.isEmpty
             authorizationStatus = isAuthorized ? .authorized : .denied
+            Log.permission.notice("screen recording check: authorized=\(self.isAuthorized) displays=\(content.displays.count)")
         } catch {
             // Error usually means permission denied
             isAuthorized = false
             authorizationStatus = .denied
-            print("PermissionManager: Screen capture permission check failed - \(error)")
+            Log.permission.error("screen recording check failed: \(String(describing: error), privacy: .public)")
         }
     }
 

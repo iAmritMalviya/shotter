@@ -6,6 +6,7 @@ import ServiceManagement
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var menuBarController: MenuBarController!
     var hotkeyManager: HotkeyManager!
+    private let secureInputMonitor = SecureInputMonitor()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Register default settings
@@ -23,6 +24,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Register global hotkeys
         registerHotkeys()
+
+        Log.system.notice("launched pid=\(ProcessInfo.processInfo.processIdentifier) macOS=\(ProcessInfo.processInfo.operatingSystemVersionString, privacy: .public) screens=\(NSScreen.screens.map(\.logDescription).joined(separator: " | "), privacy: .public)")
+        secureInputMonitor.start()
 
         // Setup launch at login if enabled
         setupLaunchAtLogin()

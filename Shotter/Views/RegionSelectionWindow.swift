@@ -1,4 +1,6 @@
 import AppKit
+import Carbon.HIToolbox
+import os
 
 /// macOS's own screenshot-selection cursor — the dotted reticle Cmd+Shift+4 uses — loaded from
 /// the HIServices cursor resources so the overlay matches the system screenshot UI instead of
@@ -80,26 +82,36 @@ final class RegionSelectionWindow {
     private var keyMonitor: Any?
     private var isSessionActive = false
 
+    /// Distinguishes log lines from different selections, and lets the delayed state snapshot
+    /// recognise that its own session is the one still running.
+    private var sessionID = 0
+    private var sessionStart = Date()
+
     func beginSelection(completion: @escaping (CGRect?) -> Void) {
         // The global hotkey keeps firing while the overlay is already up. Tear any previous
         // session down rather than ignoring the press: stacking a second cursor push and event
         // monitor against a single pop and removal would leave the capture cursor stuck
         // system-wide, but ignoring re-entry would make the hotkey dead for good if a session
         // ever failed to finish.
+        let wasActive = isSessionActive
         if isSessionActive {
             teardownSession()
             completionHandler = nil
         }
         isSessionActive = true
         completionHandler = completion
+        sessionID += 1
+        sessionStart = Date()
+        let session = sessionID
 
-        rebuildPanelsIfScreensChanged()
+        let rebuilt = rebuildPanelsIfScreensChanged()
         for panel in panels {
             panel.resetSelection()
         }
 
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.keyCode == 53 { // Escape key
+                Log.overlay.notice("session=\(session) escape pressed")
                 self?.finish(with: nil)
                 return nil
             }
@@ -118,14 +130,48 @@ final class RegionSelectionWindow {
         focused?.focusSelectionView()
 
         captureCursor.push()
+
+        // What the controller decided, with the inputs it decided on. If the overlay ever shows on
+        // the wrong display, `pointerScreen` versus `keyPanel` and the per-panel state lines below
+        // say whether the choice or the display was at fault.
+        let screens = NSScreen.screens.map(\.logDescription).joined(separator: " | ")
+        Log.overlay.notice("session=\(session) begin reentry=\(wasActive) rebuilt=\(rebuilt) panels=\(self.panels.count) pointer=\(NSStringFromPoint(mouse), privacy: .public) pointerScreen=\(screenName(containing: mouse), privacy: .public) keyPanel=\(focused?.screen?.localizedName ?? "none", privacy: .public) frontmost=\(frontmostAppName(), privacy: .public) secureInput=\(IsSecureEventInputEnabled()) screens=\(screens, privacy: .public)")
+        if panels.isEmpty {
+            // Nothing will be drawn, so the user sees the hotkey do nothing. NSScreen.screens can
+            // be momentarily empty while displays reconfigure or wake.
+            Log.overlay.error("session=\(session) begin with ZERO panels: no overlay will appear")
+        }
+
+        // The window server composites a new panel some time after AppKit calls it visible
+        // (measured: not yet on screen at t=0, on screen by ~2s), so look again after it settles.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self, self.isSessionActive, self.sessionID == session else { return }
+            self.logPanelState("settled", session: session)
+        }
+    }
+
+    /// Per-panel state as AppKit sees it next to what the window server reports for the same
+    /// window, so "AppKit thinks it is up" and "the server has it on screen" are separate facts.
+    private func logPanelState(_ label: String, session: Int) {
+        for panel in panels {
+            let server = (CGWindowListCopyWindowInfo([.optionIncludingWindow], CGWindowID(panel.windowNumber))
+                as? [[String: Any]])?.first
+            let onscreen = server?[kCGWindowIsOnscreen as String] as? Bool ?? false
+            let bounds = (server?[kCGWindowBounds as String] as? NSDictionary)
+                .flatMap { CGRect(dictionaryRepresentation: $0) }
+            let boundsText = bounds.map { NSStringFromRect($0) } ?? "none"
+            let screen = panel.screen?.localizedName ?? "none"
+            Log.overlay.notice("session=\(session) \(label, privacy: .public) screen=\(screen, privacy: .public) visible=\(panel.isVisible) key=\(panel.isKeyWindow) onActiveSpace=\(panel.isOnActiveSpace) occluded=\(!panel.occlusionState.contains(.visible)) server[known=\(server != nil) onscreen=\(onscreen) bounds=\(boundsText, privacy: .public)] frontmost=\(frontmostAppName(), privacy: .public)")
+        }
     }
 
     /// Rebuilds the per-screen panels when the display arrangement has changed.
-    private func rebuildPanelsIfScreensChanged() {
+    /// - Returns: whether the panels were rebuilt.
+    private func rebuildPanelsIfScreensChanged() -> Bool {
         let screens = NSScreen.screens
         let unchanged = panels.count == screens.count
             && zip(panels, screens).allSatisfy { $0.frame == $1.frame }
-        guard !unchanged else { return }
+        guard !unchanged else { return false }
 
         for panel in panels {
             panel.orderOut(nil)
@@ -135,6 +181,7 @@ final class RegionSelectionWindow {
                 self?.finish(with: rect)
             }
         }
+        return true
     }
 
     /// Undoes what `beginSelection` set up, without notifying the caller.
@@ -152,6 +199,12 @@ final class RegionSelectionWindow {
     private func finish(with rect: CGRect?) {
         guard isSessionActive, let handler = completionHandler else { return }
         completionHandler = nil          // guard against a panel reporting twice
+        let elapsedMs = Int(Date().timeIntervalSince(sessionStart) * 1000)
+        let result = rect.map { NSStringFromRect($0) } ?? "cancel"
+        Log.overlay.notice("session=\(self.sessionID) finish result=\(result, privacy: .public) after \(elapsedMs)ms")
+        // Before ordering the panels out, while their server-side state is still meaningful. A
+        // selection finished before the delayed snapshot ran would otherwise leave no record.
+        if elapsedMs < 1500 { logPanelState("at-finish", session: sessionID) }
         teardownSession()
         for panel in panels {
             panel.orderOut(nil)
@@ -348,6 +401,8 @@ final class RegionSelectionView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        let screen = window?.screen?.localizedName ?? "none"
+        Log.overlay.notice("mouseDown on screen=\(screen, privacy: .public) panelIsKey=\(self.window?.isKeyWindow ?? false)")
         let previous = currentRect
         startPoint = convert(event.locationInWindow, from: nil)
         isDragging = true
