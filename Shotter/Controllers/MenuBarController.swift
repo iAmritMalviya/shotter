@@ -283,7 +283,21 @@ final class MenuBarController: ObservableObject {
             alert.addButton(withTitle: "Open Settings")
         }
 
+        // Shotter is an accessory app and is not active when a hotkey-triggered capture fails. An
+        // NSAlert panel hides while its app is inactive (`hidesOnDeactivate`), so `runModal()` used
+        // to sit on an invisible window — and because it runs inside a main-queue job it also stops
+        // the main queue draining, which is where every hotkey press is handled. The result was a
+        // capture error that silently disabled all three hotkeys until Shotter was restarted.
+        // Make the alert visible so it can be dismissed.
+        NSApp.activate(ignoringOtherApps: true)
+        alert.window.hidesOnDeactivate = false
+        alert.window.level = .floating
+        alert.layout()
+        alert.window.center()
+        alert.window.orderFrontRegardless()
+
         let response = alert.runModal()
+        Log.capture.notice("error alert dismissed, response=\(response.rawValue)")
         if response == .alertSecondButtonReturn {
             permissionManager.openSystemSettings()
         }
