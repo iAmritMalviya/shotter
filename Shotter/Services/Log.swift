@@ -6,8 +6,11 @@ import os
 ///
 /// Read them back with:
 ///
-///     log show --last 1h --info --predicate 'subsystem == "com.amrit.Shotter"' --style compact
-///     log stream --level debug --predicate 'subsystem == "com.amrit.Shotter"'
+///     /usr/bin/log show --last 1h --info --predicate 'subsystem == "com.amrit.Shotter"' --style compact
+///     /usr/bin/log stream --level debug --predicate 'subsystem == "com.amrit.Shotter"'
+///
+/// Use the full path: in zsh `log` is a shell builtin, and the bare command fails with "too many
+/// arguments" instead of reaching the logging tool.
 ///
 /// Why `os.Logger` and not `print`: stdout is block-buffered when it is not a TTY, so `print`
 /// output from the installed app only appears when the process exits. A hung or misbehaving
