@@ -131,6 +131,28 @@ Xcode, so the app has a stable path as well as a stable identity.
 - Unused code that is not a mistake to "discover": `CaptureMode` (its `shortcutHint` still says `⌘⇧3/4/5` and is stale), `ClipboardManager.copyImageData`, `CaptureError.screenAsleep`/`.screenLocked`, and the `StreamOutput` fallback.
 - `docs/` holds the pre-implementation design notes (project overview, hotkey/permission research, SwiftUI examples). They predate the code and are **not** authoritative — read the source, not `docs/`, when the two disagree.
 
+## Diagnostics
+
+Failures here only happen in real use (hotkeys, Spaces, multiple displays), so the app logs through
+`os.Logger` (`Shotter/Services/Log.swift`), subsystem `com.amrit.Shotter`, one category per area:
+`hotkey`, `overlay`, `capture`, `permission`, `system`.
+
+```bash
+/usr/bin/log show --last 1h --info --predicate 'subsystem == "com.amrit.Shotter"' --style compact
+/usr/bin/log stream --level debug --predicate 'subsystem == "com.amrit.Shotter"'
+```
+
+- Use `/usr/bin/log`. In zsh bare `log` is a builtin and fails with "too many arguments".
+- Events that matter are logged at `.notice`, which is persisted. `.info`/`.debug` are memory-only
+  and gone by the time anyone reads the log. Dynamic strings need `privacy: .public` or they show
+  as `<private>`. Do not use `print`: stdout is block-buffered when not a TTY.
+- Reading a hotkey failure: no "hotkey event received" line means Carbon never delivered the key
+  (check secure event input). "received" without "dispatched" means the main queue is blocked.
+- **`runModal()` inside a main-queue job blocks every hotkey.** Hotkey presses are handled via
+  `DispatchQueue.main.async`, so any modal that runs from a main-queue job (e.g. the capture-error
+  alert) stops all three hotkeys until it is dismissed. An alert from an inactive accessory app is
+  also invisible unless activated and ordered front (`MenuBarController.showErrorAlert`).
+
 ## Verifying capture changes
 
 There are no tests, and the coordinate math can't be reasoned into correctness. Any change to capture geometry, scaling, or the selection overlay must be checked by hand on the user's machine (2560×1600 Retina, occasionally dual-monitor): capture a region containing a recognizable UI element, paste into Preview, and confirm the image is exactly `selection × scale` pixels with no padding, no stretching, and no offset.
