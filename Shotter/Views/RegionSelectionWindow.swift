@@ -135,7 +135,7 @@ final class RegionSelectionWindow {
         // the wrong display, `pointerScreen` versus `keyPanel` and the per-panel state lines below
         // say whether the choice or the display was at fault.
         let screens = NSScreen.screens.map(\.logDescription).joined(separator: " | ")
-        Log.overlay.notice("session=\(session) begin reentry=\(wasActive) rebuilt=\(rebuilt) panels=\(self.panels.count) pointer=\(NSStringFromPoint(mouse), privacy: .public) pointerScreen=\(screenName(containing: mouse), privacy: .public) keyPanel=\(focused?.screen?.localizedName ?? "none", privacy: .public) frontmost=\(frontmostAppName(), privacy: .public) secureInput=\(IsSecureEventInputEnabled()) screens=\(screens, privacy: .public)")
+        Log.overlay.notice("session=\(session) begin reentry=\(wasActive) rebuilt=\(rebuilt) panels=\(self.panels.count) pointer=\(NSStringFromPoint(mouse), privacy: .public) pointerScreen=\(screenName(containing: mouse), privacy: .public) keyPanel=\(focused?.screen?.localizedName ?? "none", privacy: .public) frontmost=\(frontmostAppName(), privacy: .public) secureInput=\(IsSecureEventInputEnabled()) activeSpace=\(SpaceInfo.activeSpace, privacy: .public) screens=\(screens, privacy: .public)")
         if panels.isEmpty {
             // Nothing will be drawn, so the user sees the hotkey do nothing. NSScreen.screens can
             // be momentarily empty while displays reconfigure or wake.
@@ -161,7 +161,7 @@ final class RegionSelectionWindow {
                 .flatMap { CGRect(dictionaryRepresentation: $0) }
             let boundsText = bounds.map { NSStringFromRect($0) } ?? "none"
             let screen = panel.screen?.localizedName ?? "none"
-            Log.overlay.notice("session=\(session) \(label, privacy: .public) screen=\(screen, privacy: .public) visible=\(panel.isVisible) key=\(panel.isKeyWindow) onActiveSpace=\(panel.isOnActiveSpace) occluded=\(!panel.occlusionState.contains(.visible)) server[known=\(server != nil) onscreen=\(onscreen) bounds=\(boundsText, privacy: .public)] frontmost=\(frontmostAppName(), privacy: .public)")
+            Log.overlay.notice("session=\(session) \(label, privacy: .public) screen=\(screen, privacy: .public) visible=\(panel.isVisible) key=\(panel.isKeyWindow) onActiveSpace=\(panel.isOnActiveSpace) occluded=\(!panel.occlusionState.contains(.visible)) server[known=\(server != nil) onscreen=\(onscreen) bounds=\(boundsText, privacy: .public)] frontmost=\(frontmostAppName(), privacy: .public) activeSpace=\(SpaceInfo.activeSpace, privacy: .public) panelSpaces=\(SpaceInfo.spaces(ofWindow: panel.windowNumber), privacy: .public) createdOnSpace=\(panel.createdOnSpace, privacy: .public)")
         }
     }
 
@@ -218,6 +218,9 @@ final class RegionSelectionWindow {
 /// A borderless overlay covering exactly one screen.
 final class RegionSelectionPanel: NSPanel {
     private let selectionView: RegionSelectionView
+
+    /// The Space that was active when this panel was created. Diagnostic only.
+    let createdOnSpace = SpaceInfo.activeSpace
 
     /// - Parameter onFinish: passed the selected rect in CG global coordinates, or nil on cancel.
     init(screen: NSScreen, onFinish: @escaping (CGRect?) -> Void) {

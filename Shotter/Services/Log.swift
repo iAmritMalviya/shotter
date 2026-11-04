@@ -84,3 +84,38 @@ final class SecureInputMonitor {
         Log.system.notice("secure event input \(enabled ? "ENABLED" : "disabled", privacy: .public) pid=\(pid ?? 0) app=\(name, privacy: .public) frontmost=\(frontmostAppName(), privacy: .public)")
     }
 }
+
+/// Read-only view of macOS Spaces for diagnostics, via private SkyLight symbols.
+///
+/// Resolved with `dlopen`/`dlsym` rather than linked, so a macOS release that renames or removes
+/// them degrades to "unknown" in the log instead of failing to launch. Nothing may branch on these
+/// values: they exist only so a "the overlay appeared on the wrong Space" report carries the Space
+/// ids that explain it.
+enum SpaceInfo {
+    private typealias MainConnection = @convention(c) () -> Int32
+    private typealias ActiveSpace = @convention(c) (Int32) -> Int
+    private typealias SpacesForWindows = @convention(c) (Int32, Int32, CFArray) -> Unmanaged<CFArray>?
+
+    private static let handle = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY)
+
+    private static func symbol<T>(_ name: String, as: T.Type) -> T? {
+        guard let handle, let sym = dlsym(handle, name) else { return nil }
+        return unsafeBitCast(sym, to: T.self)
+    }
+
+    /// The Space currently active on the main display, or "unknown".
+    static var activeSpace: String {
+        guard let connection = symbol("SLSMainConnectionID", as: MainConnection.self),
+              let active = symbol("SLSGetActiveSpace", as: ActiveSpace.self) else { return "unknown" }
+        return String(active(connection()))
+    }
+
+    /// The Space ids a window belongs to, or "unknown". A window that joins all Spaces lists all.
+    static func spaces(ofWindow windowNumber: Int) -> String {
+        guard let connection = symbol("SLSMainConnectionID", as: MainConnection.self),
+              let copy = symbol("SLSCopySpacesForWindows", as: SpacesForWindows.self),
+              let result = copy(connection(), 7, [windowNumber] as CFArray)?.takeRetainedValue() as? [Int]
+        else { return "unknown" }
+        return result.map(String.init).joined(separator: ",")
+    }
+}
